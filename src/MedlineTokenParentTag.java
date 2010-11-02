@@ -1,0 +1,1 @@
+public enum MedlineTokenParentTag { ABSTRACT_TITLE, ABSTRACT_TEXT }
