@@ -27,6 +27,9 @@ class Assignment1
 	@SuppressWarnings("deprecation")
 	public static void main(String[] args)
 	{
+		System.out.println(args.length);
+		if(true) return;
+		
 		if(args.length == 0)
 		{
 			System.out.println("usage:\nAssignment1 -index [xmlfile]\nor\nAssignment1 [token1] [token2] ...\nor\nAssignment1 \"[token1] [token2]...\"");
@@ -76,38 +79,8 @@ class Assignment1
 				boolQuery(args);
 			}
 		}
-		// TODO: get filename from arguments
+		// TODO: get filename from arguments		
 		
-		/*
-		File dbFile = new File("sqlite_db.dat");
-		SqlJetDb db;
-		try {
-			db = SqlJetDb.open(dbFile, true);
-			db.getOptions().setAutovacuum(true);
-			// seit wann kann java inline klassendefinitionen...?
-			db.runTransaction(new ISqlJetTransaction() {
-			    public Object run(SqlJetDb db) throws SqlJetException {
-					// has to be set for each transaction
-					db.getOptions().setUserVersion(1);
-					return true;
-			    }
-	        }, SqlJetTransactionMode.WRITE);
-			db.beginTransaction(SqlJetTransactionMode.WRITE);
-			try {            
-				String createTableQuery = "CREATE TABLE token_doc (token VARCHAR(128), doc_id INTEGER)";
-				String createIndexQuery = "CREATE INDEX the_index ON token_doc (token, doc_id)";
-				db.createTable(createTableQuery);
-				db.createIndex(createIndexQuery);
-				
-			} finally {
-				db.commit();
-			}
-	        db.close();
-		} catch (SqlJetException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-		/**/
 	}
 
 	public static void boolQuery(String[] querytokens)
@@ -228,6 +201,37 @@ class Assignment1
 	// stores contents of hashMap in a SQLite DB
 	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
 	{
+		
+		/*
+		File dbFile = new File("sqlite_db.dat");
+		SqlJetDb db;
+		try {
+			db = SqlJetDb.open(dbFile, true);
+			db.getOptions().setAutovacuum(true);
+			// seit wann kann java inline klassendefinitionen...?
+			db.runTransaction(new ISqlJetTransaction() {
+			    public Object run(SqlJetDb db) throws SqlJetException {
+					// has to be set for each transaction
+					db.getOptions().setUserVersion(1);
+					return true;
+			    }
+	        }, SqlJetTransactionMode.WRITE);
+			db.beginTransaction(SqlJetTransactionMode.WRITE);
+			try {            
+				String createTableQuery = "CREATE TABLE token_doc (token VARCHAR(128), doc_id INTEGER)";
+				String createIndexQuery = "CREATE INDEX the_index ON token_doc (token, doc_id)";
+				db.createTable(createTableQuery);
+				db.createIndex(createIndexQuery);
+				
+			} finally {
+				db.commit();
+			}
+	        db.close();
+		} catch (SqlJetException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		*/
 		
 	}
 }
