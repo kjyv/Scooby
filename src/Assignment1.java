@@ -27,9 +27,7 @@ class Assignment1
 	@SuppressWarnings("deprecation")
 	public static void main(String[] args)
 	{
-		System.out.println(args.length);
-		if(true) return;
-		
+
 		if(args.length == 0)
 		{
 			System.out.println("usage:\nAssignment1 -index [xmlfile]\nor\nAssignment1 [token1] [token2] ...\nor\nAssignment1 \"[token1] [token2]...\"");
@@ -42,12 +40,12 @@ class Assignment1
 				HashMap<String, Vector<MedlineTokenLocation>> invertedIndex = buildIndex(filename);
 				if(args.length >= 3)
 				{
-					if (args[2] == "hash")
+					if (args[2].compareTo("hash") == 0)
 					{
 						indexFilePath = "hash_" + indexFilePath;
 						buildHashIndex(invertedIndex);
 					}
-					else if(args[2] == "sql")
+					else if(args[2].compareTo("sql") == 0)
 					{
 						indexFilePath = "sql_" + indexFilePath;
 						buildSQLIndex(invertedIndex);
@@ -174,8 +172,7 @@ class Assignment1
 		}
 	}
 	
-	// compresses the HashMap and saves it to a file
-	public static void buildHashIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
+	public static HashMap<String, int[][]> compressIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
 	{
 		HashMap<String, int[][]> invertedCompressedIndex = new HashMap<String, int[][]>(100000, 1.0f);
 		Set<String> keys = invertedIndex.keySet();
@@ -191,7 +188,14 @@ class Assignment1
 			}
 			invertedCompressedIndex.put(key, compressedLocations);
 		}
+		return invertedCompressedIndex;
 		
+	}
+	
+	// saves index to a file
+	public static void buildHashIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
+	{
+		HashMap<String, int[][]> invertedCompressedIndex = compressIndex(invertedIndex);
 		
 		FileOutputStream fos = new FileOutputStream(indexFilePath);
 		ObjectOutputStream out = new ObjectOutputStream(fos);
@@ -199,39 +203,71 @@ class Assignment1
 	}
 	
 	// stores contents of hashMap in a SQLite DB
+	@SuppressWarnings("deprecation")
 	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
 	{
 		
-		/*
-		File dbFile = new File("sqlite_db.dat");
+		HashMap<String, int[][]> invertedCompressedIndex = compressIndex(invertedIndex);
+		
+		final String DB_NAME = "index.db";
+	    final String INDEX_TABLE_NAME = "index_doc";
+	    
+		File dbFile = new File(DB_NAME);
+        dbFile.delete();
+
 		SqlJetDb db;
 		try {
 			db = SqlJetDb.open(dbFile, true);
 			db.getOptions().setAutovacuum(true);
-			// seit wann kann java inline klassendefinitionen...?
+			
 			db.runTransaction(new ISqlJetTransaction() {
 			    public Object run(SqlJetDb db) throws SqlJetException {
-					// has to be set for each transaction
 					db.getOptions().setUserVersion(1);
 					return true;
 			    }
 	        }, SqlJetTransactionMode.WRITE);
+			
 			db.beginTransaction(SqlJetTransactionMode.WRITE);
 			try {            
-				String createTableQuery = "CREATE TABLE token_doc (token VARCHAR(128), doc_id INTEGER)";
-				String createIndexQuery = "CREATE INDEX the_index ON token_doc (token, doc_id)";
+				String createTableQuery = "CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)";
+				String createIndexQuery = "CREATE INDEX token_index ON "+ INDEX_TABLE_NAME +" (token)";
 				db.createTable(createTableQuery);
 				db.createIndex(createIndexQuery);
-				
 			} finally {
 				db.commit();
 			}
+						
+	        System.out.println();
+	        System.out.println(">Database schema objects:");
+	        System.out.println();
+	        System.out.println(db.getSchema());
+	        System.out.println(db.getOptions());
+	        
+	        //insert token index into db
+	        db.beginTransaction(SqlJetTransactionMode.WRITE);        
+			try {            
+	            ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
+	            
+	            Set<String> keys = invertedCompressedIndex.keySet();
+	    		for(String key : keys)
+	    		{
+	    			int[][] compressedLocations = invertedCompressedIndex.get(key);
+	    			for (int i = 0; i < compressedLocations.length; i++)
+	    			{    				
+	    				//only insert pmid for now, one row for each token-location
+	    				table.insert(key, compressedLocations[i][0]);
+	    			}
+	    		}
+			} finally {
+				db.commit();
+			}		
+
 	        db.close();
+	        
 		} catch (SqlJetException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		*/
 		
 	}
 }
