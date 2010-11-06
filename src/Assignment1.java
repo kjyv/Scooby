@@ -8,6 +8,8 @@ import java.io.InputStreamReader;
 import java.io.ObjectOutputStream;
 import java.io.UnsupportedEncodingException;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.Set;
 import java.util.Vector;
 import java.util.regex.Matcher;
@@ -15,7 +17,7 @@ import java.util.regex.Pattern;
 
 
 import org.tmatesoft.sqljet.core.SqlJetException;
-import org.tmatesoft.sqljet.core.internal.SqlJetTransactionMode;
+import org.tmatesoft.sqljet.core.SqlJetTransactionMode;
 import org.tmatesoft.sqljet.core.table.*;
 
 class Assignment1
@@ -172,6 +174,7 @@ class Assignment1
 		}
 	}
 	
+	//convert vectors into arrays for file saving
 	public static HashMap<String, int[][]> compressIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
 	{
 		HashMap<String, int[][]> invertedCompressedIndex = new HashMap<String, int[][]>(100000, 1.0f);
@@ -202,12 +205,11 @@ class Assignment1
 		out.writeObject(invertedCompressedIndex);
 	}
 	
-	// stores contents of hashMap in a SQLite DB
+	// stores contents of hashMap into an SQLite DB
 	@SuppressWarnings("deprecation")
 	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
-	{
-		
-		HashMap<String, int[][]> invertedCompressedIndex = compressIndex(invertedIndex);
+	{	
+		//HashMap<String, int[][]> invertedCompressedIndex = compressIndex(invertedIndex);
 		
 		final String DB_NAME = "index.db";
 	    final String INDEX_TABLE_NAME = "index_doc";
@@ -229,38 +231,31 @@ class Assignment1
 			
 			db.beginTransaction(SqlJetTransactionMode.WRITE);
 			try {            
-				String createTableQuery = "CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)";
+				String createTableQuery = "CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER, UNIQUE (token, doc_id))";
 				String createIndexQuery = "CREATE INDEX token_index ON "+ INDEX_TABLE_NAME +" (token)";
 				db.createTable(createTableQuery);
 				db.createIndex(createIndexQuery);
 			} finally {
 				db.commit();
 			}
-						
-	        System.out.println();
-	        System.out.println(">Database schema objects:");
-	        System.out.println();
-	        System.out.println(db.getSchema());
-	        System.out.println(db.getOptions());
-	        
+						        
 	        //insert token index into db
 	        db.beginTransaction(SqlJetTransactionMode.WRITE);        
 			try {            
 	            ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
-	            
-	            Set<String> keys = invertedCompressedIndex.keySet();
+	            Set<String> keys = invertedIndex.keySet();
 	    		for(String key : keys)
 	    		{
-	    			int[][] compressedLocations = invertedCompressedIndex.get(key);
-	    			for (int i = 0; i < compressedLocations.length; i++)
+	    			//make set from locations -> only insert unique pairs
+	    			Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
+	    			HashSet<Integer> locationSet = new HashSet<Integer>();
+	    			for ( Iterator<MedlineTokenLocation> i = locations.iterator(); i.hasNext();)
 	    			{    				
-	    				//only insert pmid for now, one row for each token-location
-	    				table.insert(key, compressedLocations[i][0]);
+	    				int location = i.next().pmid;
+	    				if(locationSet.add(new Integer(location))) { table.insert(key, location); }
 	    			}
 	    		}
-			} finally {
-				db.commit();
-			}		
+			} finally { db.commit();}		
 
 	        db.close();
 	        
