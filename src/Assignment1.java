@@ -269,7 +269,7 @@ class Assignment1
 	@SuppressWarnings("deprecation")
 	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
 	{			
-		File dbFile = new File(DB_NAME);
+		File dbFile = new File(indexFileDBPath);
         dbFile.delete();
 
 		SqlJetDb db;
