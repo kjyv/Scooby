@@ -15,7 +15,6 @@ import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-
 import org.tmatesoft.sqljet.core.SqlJetException;
 import org.tmatesoft.sqljet.core.SqlJetTransactionMode;
 import org.tmatesoft.sqljet.core.table.*;
@@ -23,6 +22,9 @@ import org.tmatesoft.sqljet.core.table.*;
 class Assignment1
 {
 	final static String REGEXP_SPLIT_TOKENS = "\\s+";	// \s+ , multiple white spaces TODO: check if text contains markup tags
+	final static String indexFileDBPath = "index.db";
+    final static String INDEX_TABLE_NAME = "index_doc";
+    final static String TOKEN_INDEX = "token_index";
 	static String indexFilePath = "inverted_index.dat";
 
 	
@@ -49,7 +51,6 @@ class Assignment1
 					}
 					else if(args[2].compareTo("sql") == 0)
 					{
-						indexFilePath = "sql_" + indexFilePath;
 						buildSQLIndex(invertedIndex);
 					}
 					// else if(args[2] == ...)
@@ -61,7 +62,8 @@ class Assignment1
 		else
 		{
 			File indexFile = new File(indexFilePath);
-			if(!indexFile.exists())
+			File indexFileDB = new File(indexFileDBPath);
+			if(!indexFile.exists() && !indexFileDB.exists())
 			{
 				System.out.println("ERROR: must build index first, use Assignment1 -index [xmlfile]");
 				return;
@@ -85,7 +87,65 @@ class Assignment1
 
 	public static void boolQuery(String[] querytokens)
 	{
+		boolQuerySQL(querytokens);
+	}
+	
+	public static void boolQuerySQL(String[] querytokens)
+	{
+		File dbFile = new File(indexFileDBPath);
+		SqlJetDb db;
+        Vector<String> documents = new Vector<String>();
+
+		try {
+			db = SqlJetDb.open(dbFile, true);
+			
+			for (String token: querytokens)
+			{
+		        //insert token index into db
+		        db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
+				try {				
+		            //get documents for this token
+		            Vector<String> current_docs = new Vector<String>();
+
+		            ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
+		            ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
+
+		            try {
+		                if (!cursor.eof()) {
+		                    do {
+		                    	current_docs.add(cursor.getString("doc_id"));
+		                    } while(cursor.next());
+		                }
+		            } finally {
+		                cursor.close();
+		            }
+		            
+		            if (documents.size() > 0)
+		            {
+		        		//intersect with documents from before (AND)
+		            	HashSet<String> current_docs_set = new HashSet<String>(current_docs);
+		            	documents.retainAll(current_docs_set);
+		            } else {
+		            	//keep current documents for initial set
+		            	documents = current_docs;
+		            }
+		            
+				} finally { db.commit();}		
+			}
+		    db.close();
+		    
+		} catch (SqlJetException e) {
+			e.printStackTrace();
+		}
 		
+
+		System.out.print("Found "+ documents.size()+ " documents matching your query");
+		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
+		
+		for (String doc : documents)
+		{
+			System.out.println(doc);
+		}
 	}
 	
 	public static void phraseQuery(String[] querytokens)
@@ -208,12 +268,7 @@ class Assignment1
 	// stores contents of hashMap into an SQLite DB
 	@SuppressWarnings("deprecation")
 	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
-	{	
-		//HashMap<String, int[][]> invertedCompressedIndex = compressIndex(invertedIndex);
-		
-		final String DB_NAME = "index.db";
-	    final String INDEX_TABLE_NAME = "index_doc";
-	    
+	{			
 		File dbFile = new File(DB_NAME);
         dbFile.delete();
 
@@ -246,7 +301,7 @@ class Assignment1
 	            Set<String> keys = invertedIndex.keySet();
 	    		for(String key : keys)
 	    		{
-	    			//make set from locations -> only insert unique pairs
+	    			//put locations in set so we only insert unique pairs
 	    			Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
 	    			HashSet<Integer> locationSet = new HashSet<Integer>();
 	    			for ( Iterator<MedlineTokenLocation> i = locations.iterator(); i.hasNext();)
