@@ -22,12 +22,12 @@ import org.tmatesoft.sqljet.core.table.*;
 class Assignment1
 {
 	final static String REGEXP_SPLIT_TOKENS = "\\s+";	// \s+ , multiple white spaces TODO: check if text contains markup tags
-	final static String indexFileDBPath = "index.db";
     final static String INDEX_TABLE_NAME = "index_doc";
     final static String TOKEN_INDEX = "token_index";
+    final static String DOCUMENTS_TABLE_NAME = "documents";
+	final static String indexFileDBPath = "index.db";
 	static String indexFilePath = "inverted_index.dat";
-
-	
+		
 	@SuppressWarnings("deprecation")
 	public static void main(String[] args)
 	{
@@ -41,7 +41,9 @@ class Assignment1
 		{
 			String filename = args[1];
 			try {
-				HashMap<String, Vector<MedlineTokenLocation>> invertedIndex = buildIndex(filename);
+				
+				HashMap<String, Vector<MedlineTokenLocation>> invertedIndex  = buildIndex(filename);
+				  
 				if(args.length >= 3)
 				{
 					if (args[2].compareTo("hash") == 0)
@@ -49,11 +51,11 @@ class Assignment1
 						indexFilePath = "hash_" + indexFilePath;
 						buildHashIndex(invertedIndex);
 					}
-					else if(args[2].compareTo("sql") == 0)
-					{
-						buildSQLIndex(invertedIndex);
-					}
 					// else if(args[2] == ...)
+				}
+				else
+				{
+					buildSQLIndex(invertedIndex);
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -74,7 +76,7 @@ class Assignment1
 			{
 				args[0] = args[0].substring(1);	// skip first char
 				args[args.length-1] = args[args.length-1].substring(0, args.length); // leave out last char
-				phraseQuery(args);
+				phraseQuerySQL(args);
 			}
 			else
 			{
@@ -90,30 +92,31 @@ class Assignment1
 		boolQuerySQL(querytokens);
 	}
 	
-	public static void boolQuerySQL(String[] querytokens)
+	public static Vector<Integer> boolQuerySQL(String[] querytokens)
 	{
 		File dbFile = new File(indexFileDBPath);
 		SqlJetDb db;
-        Vector<String> documents = new Vector<String>();
+        Vector<Integer> documents = new Vector<Integer>();
 
 		try {
 			db = SqlJetDb.open(dbFile, true);
 			
 			for (String token: querytokens)
 			{
-		        //insert token index into db
+				//TODO: create array of document ids per token plus count, then sort by
+				//count and then intersect starting with smallest set 
 		        db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
 				try {				
-		            //get documents for this token
-		            Vector<String> current_docs = new Vector<String>();
-
 		            ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
 		            ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
-
+		            
+		            //documents for this token
+		            Vector<Integer> current_docs = new Vector<Integer>();            
+		            
 		            try {
 		                if (!cursor.eof()) {
 		                    do {
-		                    	current_docs.add(cursor.getString("doc_id"));
+		                    	current_docs.add((int)cursor.getInteger("doc_id"));
 		                    } while(cursor.next());
 		                }
 		            } finally {
@@ -123,7 +126,7 @@ class Assignment1
 		            if (documents.size() > 0)
 		            {
 		        		//intersect with documents from before (AND)
-		            	HashSet<String> current_docs_set = new HashSet<String>(current_docs);
+		            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
 		            	documents.retainAll(current_docs_set);
 		            } else {
 		            	//keep current documents for initial set
@@ -142,14 +145,17 @@ class Assignment1
 		System.out.print("Found "+ documents.size()+ " documents matching your query");
 		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
 		
-		for (String doc : documents)
+		for (Integer doc : documents)
 		{
 			System.out.println(doc);
 		}
+		
+		return documents;
 	}
 	
-	public static void phraseQuery(String[] querytokens)
+	public static void phraseQuerySQL(String[] querytokens)
 	{
+		//we have a phrase in arg[0] without ""
 		
 	}
 
@@ -172,7 +178,7 @@ class Assignment1
 		Matcher mAbstractTitle, mAbstractText, mPmid;
 		// naive tokenization: 99084 different tokens
 		HashMap<String, Vector<MedlineTokenLocation>> invertedIndex = new HashMap<String, Vector<MedlineTokenLocation>>(100000, 1.0f);
-		
+			
 		while(mCitation.find())
 		{
 			medlineCitation = mCitation.group(2);
@@ -181,24 +187,29 @@ class Assignment1
 				continue;
 			int pmid = Integer.parseInt(mPmid.group(1));
 			
+			MedlineDocument document = null;
+			
 			// search for tokens in <AbstractTitle>
 			mAbstractTitle = pAbstractTitle.matcher(medlineCitation);
 			while(mAbstractTitle.find())
 			{
+				String title = mAbstractTitle.group(1).toLowerCase();
+				
 				extractTokens(
-							mAbstractTitle.group(1).toLowerCase(),
+							title,
 							MedlineTokenParentTag.ABSTRACT_TITLE,
 							pmid,
 							invertedIndex
-				);
+				);	
 			}
 			
 			// search for tokens in <AbstractText>
 			mAbstractText = pAbstractText.matcher(medlineCitation);
 			while(mAbstractText.find())
-			{
+			{	
+				String body = mAbstractText.group(1).toLowerCase();
 				extractTokens(
-							mAbstractText.group(1).toLowerCase(),
+							body,
 							MedlineTokenParentTag.ABSTRACT_TEXT,
 							pmid,
 							invertedIndex
@@ -206,6 +217,7 @@ class Assignment1
 			}
 		}
 		//System.out.println(invertedIndex.size());
+
 		return invertedIndex;
 	}
 	
@@ -255,6 +267,60 @@ class Assignment1
 		
 	}
 	
+	public static void getDocuments(String filename, SqlJetDb db) throws IOException
+	{
+		// read file into
+		File f = new File(filename);
+		char[] cbuf = new char[(int)f.length()];
+		InputStreamReader in = new InputStreamReader(new FileInputStream(f), "UTF-8");
+		in.read(cbuf);
+		String xml = new String(cbuf);
+		// don't confuse <MedlineCitationSet> with <MedlineCitation owner=""...>
+		Pattern pCitation = Pattern.compile("<MedlineCitation( .+?)?>(.+?)</MedlineCitation>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+		Pattern pAbstractTitle = Pattern.compile("<AbstractTitle.*?>(.+?)</AbstractTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+		Pattern pAbstractText = Pattern.compile("<AbstractText.*?>(.+?)</AbstractText>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+		Pattern pPmid = Pattern.compile("<pmid>(\\d+)</pmid>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+		Matcher mCitation = pCitation.matcher(xml);
+		
+		String medlineCitation;
+		Matcher mAbstractTitle, mAbstractText, mPmid;
+		
+		Vector<MedlineDocument> fullDocuments = new Vector<MedlineDocument>();
+		
+		while(mCitation.find())
+		{
+			medlineCitation = mCitation.group(2);
+			mPmid = pPmid.matcher(medlineCitation);
+			if(mPmid.find() == false)
+				continue;
+			int pmid = Integer.parseInt(mPmid.group(1));
+			
+			MedlineDocument document = null;
+			
+			// search for tokens in <AbstractTitle>
+			mAbstractTitle = pAbstractTitle.matcher(medlineCitation);
+			while(mAbstractTitle.find())
+			{
+				String title = mAbstractTitle.group(1).toLowerCase();
+
+				document = new MedlineDocument(pmid, title, "");
+				fullDocuments.add(document);
+				
+			}
+			
+			// search for tokens in <AbstractText>
+			mAbstractText = pAbstractText.matcher(medlineCitation);
+			while(mAbstractText.find())
+			{	
+				String body = mAbstractText.group(1).toLowerCase();
+				
+				if (document == null) { document = new MedlineDocument(pmid, "", body); }
+				else { 	document.body = body; }			
+			}
+		}
+	}
+
+	
 	// saves index to a file
 	public static void buildHashIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
 	{
@@ -268,7 +334,7 @@ class Assignment1
 	// stores contents of hashMap into an SQLite DB
 	@SuppressWarnings("deprecation")
 	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
-	{			
+	{
 		File dbFile = new File(indexFileDBPath);
         dbFile.delete();
 
@@ -285,11 +351,13 @@ class Assignment1
 	        }, SqlJetTransactionMode.WRITE);
 			
 			db.beginTransaction(SqlJetTransactionMode.WRITE);
-			try {            
-				String createTableQuery = "CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER, UNIQUE (token, doc_id))";
-				String createIndexQuery = "CREATE INDEX token_index ON "+ INDEX_TABLE_NAME +" (token)";
-				db.createTable(createTableQuery);
-				db.createIndex(createIndexQuery);
+			try {            						
+				db.createTable("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)");
+				db.createIndex("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
+				
+				db.createTable("CREATE TABLE " + DOCUMENTS_TABLE_NAME + " (pmid INTEGER, doc_title TEXT, doc_body TEXT)");
+				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
+				
 			} finally {
 				db.commit();
 			}
@@ -303,7 +371,7 @@ class Assignment1
 	    		{
 	    			//put locations in set so we only insert unique pairs
 	    			Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
-	    			HashSet<Integer> locationSet = new HashSet<Integer>();
+	    			HashSet<Integer> locationSet = new HashSet<Integer>(locations.size());
 	    			for ( Iterator<MedlineTokenLocation> i = locations.iterator(); i.hasNext();)
 	    			{    				
 	    				int location = i.next().pmid;
@@ -312,7 +380,19 @@ class Assignment1
 	    		}
 			} finally { db.commit();}		
 
-	        db.close();
+			/*
+			//insert documents into db
+			db.beginTransaction(SqlJetTransactionMode.WRITE);        
+			try {            
+	            ISqlJetTable table = db.getTable(DOCUMENTS_TABLE_NAME);
+	            
+	    		for(MedlineDocument document: fullDocuments)
+	    		{
+	    			table.insert(document.pmid, document.title, document.body);
+	    		}
+			} finally { db.commit();}
+			
+	        db.close();*/
 	        
 		} catch (SqlJetException e) {
 			// TODO Auto-generated catch block
