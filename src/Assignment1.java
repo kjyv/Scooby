@@ -55,7 +55,7 @@ class Assignment1
 				}
 				else
 				{
-					buildSQLIndex(invertedIndex);
+					buildSQLIndex(invertedIndex, filename);
 				}
 			} catch (IOException e) {
 				e.printStackTrace();
@@ -159,14 +159,18 @@ class Assignment1
 		
 	}
 
-	public static HashMap<String, Vector<MedlineTokenLocation>> buildIndex(String filename) throws IOException
+	public static String readCorpus(String filename) throws IOException
 	{
-		// read file into
 		File f = new File(filename);
 		char[] cbuf = new char[(int)f.length()];
 		InputStreamReader in = new InputStreamReader(new FileInputStream(f), "UTF-8");
 		in.read(cbuf);
-		String xml = new String(cbuf);
+		return (new String(cbuf));
+	}
+	
+	public static HashMap<String, Vector<MedlineTokenLocation>> buildIndex(String filename) throws IOException
+	{
+		String xml = readCorpus(filename);
 		// don't confuse <MedlineCitationSet> with <MedlineCitation owner=""...>
 		Pattern pCitation = Pattern.compile("<MedlineCitation( .+?)?>(.+?)</MedlineCitation>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Pattern pAbstractTitle = Pattern.compile("<AbstractTitle.*?>(.+?)</AbstractTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
@@ -186,9 +190,7 @@ class Assignment1
 			if(mPmid.find() == false)
 				continue;
 			int pmid = Integer.parseInt(mPmid.group(1));
-			
-			MedlineDocument document = null;
-			
+					
 			// search for tokens in <AbstractTitle>
 			mAbstractTitle = pAbstractTitle.matcher(medlineCitation);
 			while(mAbstractTitle.find())
@@ -267,14 +269,9 @@ class Assignment1
 		
 	}
 	
-	public static void getDocuments(String filename, SqlJetDb db) throws IOException
+	public static void storeDocumentsSQL(String filename) throws IOException
 	{
-		// read file into
-		File f = new File(filename);
-		char[] cbuf = new char[(int)f.length()];
-		InputStreamReader in = new InputStreamReader(new FileInputStream(f), "UTF-8");
-		in.read(cbuf);
-		String xml = new String(cbuf);
+		String xml = readCorpus(filename);
 		// don't confuse <MedlineCitationSet> with <MedlineCitation owner=""...>
 		Pattern pCitation = Pattern.compile("<MedlineCitation( .+?)?>(.+?)</MedlineCitation>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Pattern pAbstractTitle = Pattern.compile("<AbstractTitle.*?>(.+?)</AbstractTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
@@ -286,37 +283,57 @@ class Assignment1
 		Matcher mAbstractTitle, mAbstractText, mPmid;
 		
 		Vector<MedlineDocument> fullDocuments = new Vector<MedlineDocument>();
-		
-		while(mCitation.find())
-		{
-			medlineCitation = mCitation.group(2);
-			mPmid = pPmid.matcher(medlineCitation);
-			if(mPmid.find() == false)
-				continue;
-			int pmid = Integer.parseInt(mPmid.group(1));
+				
+		File dbFile = new File(indexFileDBPath);
+		SqlJetDb db;
+		try {
+			db = SqlJetDb.open(dbFile, true);
 			
-			MedlineDocument document = null;
-			
-			// search for tokens in <AbstractTitle>
-			mAbstractTitle = pAbstractTitle.matcher(medlineCitation);
-			while(mAbstractTitle.find())
+			while(mCitation.find())
 			{
-				String title = mAbstractTitle.group(1).toLowerCase();
+				medlineCitation = mCitation.group(2);
+				mPmid = pPmid.matcher(medlineCitation);
+				if(mPmid.find() == false)
+					continue;
+				int pmid = Integer.parseInt(mPmid.group(1));
+				
+				MedlineDocument document = null;
+				
+				mAbstractTitle = pAbstractTitle.matcher(medlineCitation);
+				while(mAbstractTitle.find())
+				{
+					String title = mAbstractTitle.group(1).toLowerCase();
+		
+					document = new MedlineDocument(pmid, title, "");
+					fullDocuments.add(document);
+				}
+				
+				mAbstractText = pAbstractText.matcher(medlineCitation);
+				while(mAbstractText.find())
+				{	
+					String body = mAbstractText.group(1).toLowerCase();
+					
+					if (document == null) { document = new MedlineDocument(pmid, "", body); fullDocuments.add(document);}
+					else { 	document.body = body; }			
+				}
+			}
 
-				document = new MedlineDocument(pmid, title, "");
-				fullDocuments.add(document);
-				
-			}
-			
-			// search for tokens in <AbstractText>
-			mAbstractText = pAbstractText.matcher(medlineCitation);
-			while(mAbstractText.find())
-			{	
-				String body = mAbstractText.group(1).toLowerCase();
-				
-				if (document == null) { document = new MedlineDocument(pmid, "", body); }
-				else { 	document.body = body; }			
-			}
+			db.beginTransaction(SqlJetTransactionMode.WRITE);        
+			try {            
+				ISqlJetTable table = db.getTable(DOCUMENTS_TABLE_NAME);
+
+				for(MedlineDocument document: fullDocuments)
+				//if(document != null)
+				{
+					//insert document into db
+		            	    	
+					table.insert(document.pmid, document.title, document.body);
+					
+				}
+			} finally { db.commit();}
+			db.close();
+		} catch (SqlJetException e) {
+			e.printStackTrace();
 		}
 	}
 
@@ -333,7 +350,7 @@ class Assignment1
 	
 	// stores contents of hashMap into an SQLite DB
 	@SuppressWarnings("deprecation")
-	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
+	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex, String filename) throws IOException
 	{
 		File dbFile = new File(indexFileDBPath);
         dbFile.delete();
@@ -352,12 +369,9 @@ class Assignment1
 			
 			db.beginTransaction(SqlJetTransactionMode.WRITE);
 			try {            						
-				db.createTable("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)");
-				db.createIndex("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
-				
+				db.createTable("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)");				
 				db.createTable("CREATE TABLE " + DOCUMENTS_TABLE_NAME + " (pmid INTEGER, doc_title TEXT, doc_body TEXT)");
 				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
-				
 			} finally {
 				db.commit();
 			}
@@ -378,26 +392,19 @@ class Assignment1
 	    				if(locationSet.add(new Integer(location))) { table.insert(key, location); }
 	    			}
 	    		}
+	    		
+	    		//create after inserts for speed up 
+				db.createIndex("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
 			} finally { db.commit();}		
 
-			/*
-			//insert documents into db
-			db.beginTransaction(SqlJetTransactionMode.WRITE);        
-			try {            
-	            ISqlJetTable table = db.getTable(DOCUMENTS_TABLE_NAME);
-	            
-	    		for(MedlineDocument document: fullDocuments)
-	    		{
-	    			table.insert(document.pmid, document.title, document.body);
-	    		}
-			} finally { db.commit();}
-			
-	        db.close();*/
+	        db.close();
 	        
 		} catch (SqlJetException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+		
+		storeDocumentsSQL(filename);
 		
 	}
 }
