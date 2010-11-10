@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -18,14 +17,12 @@ import java.util.TreeSet;
 import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Collection;
-
 import org.tmatesoft.sqljet.core.SqlJetException;
 import org.tmatesoft.sqljet.core.SqlJetTransactionMode;
 import org.tmatesoft.sqljet.core.table.*;
 
 import org.apache.commons.lang3.StringUtils;
-
+import java.sql.*;
 
 class Assignment1
 {
@@ -122,7 +119,7 @@ class Assignment1
 					}
 					else
 					{
-						// the last arg (possibly unsupported index type) is treatet as a token
+						// the last arg (possibly unsupported index type) is treated as a token
 						defaultBoolQuery(args);
 					}
 				}
@@ -276,33 +273,52 @@ class Assignment1
 			printUsage();
 			System.exit(1);
 		}
+				
+		//SqlJetDb db;
+		try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
 
-		SqlJetDb db;
         Vector<Integer> documents = new Vector<Integer>();
 
 		try {
-			db = SqlJetDb.open(dbFile, true);
 			
+			//db = SqlJetDb.open(dbFile, true);
+			Connection conn =
+			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
+			Statement stat = conn.createStatement();
+			//PreparedStatement prep = conn.prepareStatement(
+			//	    		"select * from index_doc where token = (?);");
+					
 			for (String token: querytokens)
 			{
 				//TODO: create array of document ids per token plus count, then sort by
 				//count and then intersect starting with smallest set 
-		        db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
-				try {				
-		            ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
-		            ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
+		        //db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
+				try {
+					//ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
+		            //ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
+		            //prep.setString(1, token);
 		            
 		            //documents for this token
 		            Vector<Integer> current_docs = new Vector<Integer>();            
-		            
+		            //prep.execute();
+		            ResultSet rs = stat.executeQuery("select * from index_doc where token = \""+ token + "\";");
 		            try {
-		                if (!cursor.eof()) {
-		                    do {
-		                    	current_docs.add((int)cursor.getInteger("doc_id"));
-		                    } while(cursor.next());
+		                //if (!cursor.eof()) {
+		            	//while (prep.getMoreResults()) {
+		            	while (rs.next()) {
+		                    //do {
+		                    	//current_docs.add((int)cursor.getInteger("doc_id"));
+		                    	//current_docs.add(prep.getResultSet().getInt("doc_id"));
+		            			current_docs.add(rs.getInt("doc_id"));
+		                    //} while(cursor.next());
 		                }
 		            } finally {
-		                cursor.close();
+		                //cursor.close();
+			            rs.close();
 		            }
 		            
 		            if (documents.size() > 0)
@@ -315,17 +331,17 @@ class Assignment1
 		            	documents = current_docs;
 		            }
 		            
-				} finally { db.commit();}		
+				} finally { 
+					//db.commit();
+					//prep.close();
+					conn.close();	
+				}
 			}
-		    db.close();
+		    //db.close();
 		    
-		} catch (SqlJetException e) {
+		} catch (SQLException e) {
 			e.printStackTrace();
 		}
-		
-
-		System.out.print("Found "+ documents.size()+ " documents matching your query");
-		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
 		
 		if(talkative)
 		{
@@ -333,6 +349,10 @@ class Assignment1
 			{
 				System.out.println(doc);
 			}
+
+			System.out.print("Found "+ documents.size()+ " document(s) matching your query");
+			if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
+			
 		}
 		
 		return documents;
@@ -341,37 +361,48 @@ class Assignment1
 	public static void phraseQuerySQL(String[] querytokens) {
 		//we have a phrase in args[0] without "" and maybe tokens in the rest
 		
-		Vector<Integer> documents = boolQuerySQL(querytokens, false);
+		//Vector<Integer> documents = boolQuerySQL(querytokens, false);
 		File dbFile = new File(indexFileDBPath);      
-		SqlJetDb db;
-		System.out.println(StringUtils.join(querytokens, " "));
+		//SqlJetDb db;
 		
-		// store contents of token index into an SQLite DB
 		try {
-			db = SqlJetDb.open(dbFile, true);
-
-			for(Integer pmid : documents) {		
-				db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
-				try {            						
-					ISqlJetTable table = db.getTable(DOCUMENTS_TABLE_NAME);
-		            ISqlJetCursor cursor = table.lookup("documents_index", pmid);
-	
-		            try {
-		                if (!cursor.eof()) {
-		                    do {
-		                    } while(cursor.next());
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		
+		try {			
+			Connection conn =
+			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
+			Statement stat = conn.createStatement();
+			//PreparedStatement prep = conn.prepareStatement(
+			//	    		"select * from index_doc where token = (?);");
+		
+			//for(Integer pmid : documents) {
+				try {
+					ResultSet rs = stat.executeQuery(
+							"select pmid from "+ DOCUMENTS_TABLE_NAME +
+							" inner join ( select distinct doc_id from index_doc where token in (\""+
+							StringUtils.join(querytokens, "\", \"")+
+							"\")) on pmid = doc_id where doc_body like \"% "+
+							StringUtils.join(querytokens, " ")+ " %\";");
+												
+					try {
+						int count = 0;
+		            	while (rs.next()) {
+		            			System.out.println(rs.getInt("pmid"));
+		            			count++;
 		                }
+		            	System.out.println("Found "+ count +" document(s) matching your query.");
 		            } finally {
-		                cursor.close();
+			            rs.close();
 		            }
-	
-				} finally {
-					db.commit();
+				} finally { 
+					//prep.close();
+					conn.close();	
 				}
-							       	
-		        db.close();
-			}
-		} catch (SqlJetException e) {
+			//}
+		} catch (SQLException e) {
 			e.printStackTrace();
 		}
 	}
@@ -436,6 +467,7 @@ class Assignment1
 				);
 			}
 		}
+		xml = null;
 		//System.out.println(invertedIndex.size());
 		return invertedIndex;
 	}
