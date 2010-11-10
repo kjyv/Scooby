@@ -53,16 +53,17 @@ class Assignment1
 				  
 				if(args.length >= 3)
 				{
-					if (args[2].equals("charArr"))
+					if (args[2].equals("-charArr"))
 					{
 						indexFilePath = "charArr_" + indexFilePath;
 						buildCharArrIndex(invertedIndex);
 					}
-					else if(args[2].equals("sql"))
+					// else if(args[2].equals())
+					else
 					{
+						// any other index type, including -sql
 						buildSQLIndex(invertedIndex, filename);
 					}
-					// else if(args[2].equals())
 				}
 				else
 				{
