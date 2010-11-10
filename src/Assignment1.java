@@ -1,19 +1,24 @@
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.UnsupportedEncodingException;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.Collection;
 
 import org.tmatesoft.sqljet.core.SqlJetException;
 import org.tmatesoft.sqljet.core.SqlJetTransactionMode;
@@ -29,18 +34,21 @@ class Assignment1
     final static String TOKEN_INDEX = "token_index";
     final static String DOCUMENTS_TABLE_NAME = "documents";
 	final static String indexFileDBPath = "index.db";
-	static String indexFilePath = "inverted_index.dat";
-		
-	@SuppressWarnings("deprecation")
+	static String indexFilePath = "inverted_index";
+	static int maxTokenLength = 0;	// stores the longest found token's length
+
 	public static void main(String[] args)
-	{	
+	{
+		System.out.println(Arrays.deepToString(args));
+		System.exit(0);
 		if(args.length == 0)
 		{
-			System.out.println("usage:\nAssignment1 -index [xmlfile]\nor\nAssignment1 [token1] [token2] ...\nor\nAssignment1 \"[token1] [token2]...\"");
+			System.out.println("usage:\nAssignment1 -index xmlfile [indexType:charArr|sql]\nor\nAssignment1 [indexType:sql|charArr] token1 token2 ...\nor\nAssignment1 [indexType:sql|charArr] \"token1 token2...\"");
 			return;
 		}
-		else if(args.length >= 2 && args[0].compareTo("-index") == 0)
+		else if(args.length >= 2 && args[0].equals("-index"))
 		{
+			// ------------------------------ create index ----------------------------------
 			String filename = args[1];
 			try {
 				
@@ -48,15 +56,20 @@ class Assignment1
 				  
 				if(args.length >= 3)
 				{
-					if (args[2].compareTo("hash") == 0)
+					if (args[2].equals("charArr"))
 					{
-						indexFilePath = "hash_" + indexFilePath;
-						buildHashIndex(invertedIndex);
+						indexFilePath = "charArr_" + indexFilePath;
+						buildCharArrIndex(invertedIndex);
 					}
-					// else if(args[2] == ...)
+					else if(args[2].equals("sql"))
+					{
+						buildSQLIndex(invertedIndex, filename);
+					}
+					// else if(args[2].equals())
 				}
 				else
 				{
+					// no index type given, assume sql
 					buildSQLIndex(invertedIndex, filename);
 				}
 			} catch (IOException e) {
@@ -65,6 +78,7 @@ class Assignment1
 		}
 		else
 		{
+			// ------------------------------ search ----------------------------------
 			File indexFile = new File(indexFilePath);
 			File indexFileDB = new File(indexFileDBPath);
 			if(!indexFile.exists() && !indexFileDB.exists())
@@ -73,11 +87,9 @@ class Assignment1
 				return;
 			}
 			
-			// phrase search if first char of first arg is a quote and last char of last arg is a quote
+			// phrase search
 			if(args[0].split(" ").length > 1)
 			{
-				args[0] = args[0].substring(1);	// skip first char
-				args[args.length-1] = args[args.length-1].substring(0, args.length); // leave out last char
 				phraseQuerySQL(args);
 			}
 			else
@@ -92,6 +104,96 @@ class Assignment1
 	public static void boolQuery(String[] querytokens)
 	{
 		boolQuerySQL(querytokens, true);
+	}
+	
+	public static Set<Integer> boolQueryCharArrIndex(File indexFile, String[] tokens) throws IOException, ClassNotFoundException
+	{
+		FileInputStream fis = new FileInputStream(indexFile);
+		ObjectInputStream objI = new ObjectInputStream(new BufferedInputStream(fis));
+		char[][] hashFunc = (char[][])objI.readObject();
+		int[][] pmidsPerToken = (int[][])objI.readObject();
+		objI.close();
+		fis.close();
+		
+		// TODO: use a TreeSet or HashSet for set intersection?
+		HashSet<Integer> pmids = new HashSet<Integer>(32768, 1.0f);	// 2^15, avoid re-hashing
+		
+		//--------------------------- determine intersection order -------------------------------------
+		
+		// indexed by its index in tokens[]
+		Vector<HashSet<Integer>> pmidsForEachToken = new Vector<HashSet<Integer>>(tokens.length);
+		// used to determine intersection order - sort tokenIndex'es by their number of found pmids
+		// i.e. {{0, [numOfFoundPmids]}, {1, [numOfFoundPmids]}, ...}
+		Vector<Vector<Integer>> tokenIndexWithPmidLength = new Vector<Vector<Integer>>(tokens.length);
+		// fill pmidsForEachToken
+		for(int j = 0; j < tokens.length; j++)
+		{
+			String token = tokens[j];
+			// get hash value
+			int tokenIndex = binSearchIndex(hashFunc, token);
+			if(tokenIndex == -1)
+			{
+				System.out.println("warning: token " + token + " could not be found, is ignored");
+				break;	// this is ok. no empty hashset has to be inserted into pmidsForEachToken becuase of intersection order algorithm
+			}
+			// query hash table
+			int[] pmidsForToken = pmidsPerToken[tokenIndex];
+			// convert int[] to HashSet<Integer> to be able to perform intersection
+			int len = pmidsForToken.length;
+			HashSet<Integer> pmidsForTokenSet = new HashSet<Integer>(len*2, 1.0f);
+			for (int i = 0; i < len; i++)
+			{
+				pmidsForTokenSet.add(pmidsForToken[i]);
+			}
+			pmidsForEachToken.add(pmidsForTokenSet);
+			
+			// fill tokenIndexWithPmidLength
+			Vector<Integer> tmp = new  Vector<Integer>(2);
+			tmp.add(j);
+			tmp.add(len);
+			tokenIndexWithPmidLength.add(tmp);
+		}
+		// sort pmidsForEachToken by descending number of pmids
+		Collections.sort(tokenIndexWithPmidLength, new PmidListIntersectionOrderComparator<Vector<Integer>>());
+		// the intersection order is now determined by the order of elements in tokenIndexWithPmidLength
+		// each entry in tokenIndexWithPmidLength has the form {tokenIndex, numberOfFoundPmids}
+		
+		// perform intersections
+		for(int j = 0; j < tokens.length; j++)
+		{
+			int sortedByPmidSizeIndex = tokenIndexWithPmidLength.get(j).get(0);
+			HashSet<Integer> nextIntersectionSet = pmidsForEachToken.get(sortedByPmidSizeIndex);
+			// fill initially or intersect
+			if(j == 0)
+				pmids.addAll(nextIntersectionSet);
+			else
+				pmids.retainAll(nextIntersectionSet);
+			if(pmids.size() == 0)
+				break;
+		}
+		return pmids;
+	}
+	
+	public static int binSearchIndex(char[][] hashFunc, String token)
+	{
+		int l = 0, r = hashFunc.length-1, m;
+		
+		while(l <= r)
+		{
+			m = (l+r)/2;
+			int comp = new String(hashFunc[m]).compareTo(token);
+			if(comp < 0)
+			{
+				l = m+1;
+			}
+			else if(comp > 0)
+			{
+				r = m-1;
+			}
+			else return m;
+		}
+		
+		return -1;
 	}
 	
 	public static Vector<Integer> boolQuerySQL(String[] querytokens, boolean talkative)
@@ -199,11 +301,11 @@ class Assignment1
 			e.printStackTrace();
 		}
 	}
-
+	
 	public static String readCorpus(String filename) throws IOException {
 		File f = new File(filename);
 		char[] cbuf = new char[(int)f.length()];
-		InputStreamReader in = new InputStreamReader(new FileInputStream(f), "UTF-8");
+		BufferedReader in = new BufferedReader(new InputStreamReader(new FileInputStream(f), "UTF-8"));
 		in.read(cbuf);
 		return (new String(cbuf));
 	}
@@ -213,36 +315,38 @@ class Assignment1
 		String xml = readCorpus(filename);
 		// don't confuse <MedlineCitationSet> with <MedlineCitation owner=""...>
 		Pattern pCitation = Pattern.compile("<MedlineCitation( .+?)?>(.+?)</MedlineCitation>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
-		Pattern pAbstractTitle = Pattern.compile("<AbstractTitle.*?>(.+?)</AbstractTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+		Pattern pArticleTitle = Pattern.compile("<ArticleTitle.*?>(.+?)</ArticleTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Pattern pAbstractText = Pattern.compile("<AbstractText.*?>(.+?)</AbstractText>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Pattern pPmid = Pattern.compile("<pmid>(\\d+)</pmid>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Matcher mCitation = pCitation.matcher(xml);
 		
 		String medlineCitation;
-		Matcher mAbstractTitle, mAbstractText, mPmid;
+		Matcher mArticleTitle, mAbstractText, mPmid;
 		// naive tokenization: 99084 different tokens
 		HashMap<String, Vector<MedlineTokenLocation>> invertedIndex = new HashMap<String, Vector<MedlineTokenLocation>>(100000, 1.0f);
-			
+		int numPmids = 0;	// 30000 => 2^15 = 32768, important for size of hashset
+		
 		while(mCitation.find())
 		{
 			medlineCitation = mCitation.group(2);
 			mPmid = pPmid.matcher(medlineCitation);
 			if(mPmid.find() == false)
 				continue;
+			numPmids++;
 			int pmid = Integer.parseInt(mPmid.group(1));
-					
-			// search for tokens in <AbstractTitle>
-			mAbstractTitle = pAbstractTitle.matcher(medlineCitation);
-			while(mAbstractTitle.find())
+			
+			// search for tokens in <ArticleTitle>
+			mArticleTitle = pArticleTitle.matcher(medlineCitation);
+			while(mArticleTitle.find())
 			{
-				String title = mAbstractTitle.group(1).toLowerCase();
+				String title = mArticleTitle.group(1).toLowerCase();
 				
 				extractTokens(
 							title,
 							MedlineTokenParentTag.ABSTRACT_TITLE,
 							pmid,
 							invertedIndex
-				);	
+				);
 			}
 			
 			// search for tokens in <AbstractText>
@@ -259,7 +363,6 @@ class Assignment1
 			}
 		}
 		//System.out.println(invertedIndex.size());
-
 		return invertedIndex;
 	}
 	
@@ -273,6 +376,8 @@ class Assignment1
 		for(int i = 0; i < len; i++)
 		{
 			token = tokens[i];
+			if(token.length() > maxTokenLength)
+				maxTokenLength = token.length();
 			if((locations = invertedIndex.get(token)) != null)
 			{
 				// existing token, add location
@@ -287,38 +392,7 @@ class Assignment1
 			}
 		}
 	}
-	
-	//convert vectors into arrays for file saving
-	public static HashMap<String, int[][]> compressIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex)
-	{
-		HashMap<String, int[][]> invertedCompressedIndex = new HashMap<String, int[][]>(100000, 1.0f);
-		Set<String> keys = invertedIndex.keySet();
-		for(String key : keys)
-		{
-			Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
-			int[][] compressedLocations = new int[locations.size()][2];
-			for (int i = 0; i < locations.size(); i++)
-			{
-				MedlineTokenLocation mtl = locations.get(i);
-				compressedLocations[i][0] = mtl.pmid;
-				compressedLocations[i][1] = mtl.parentTag.ordinal();
-			}
-			invertedCompressedIndex.put(key, compressedLocations);
-		}
-		return invertedCompressedIndex;
-		
-	}
-	
-	// saves index to a file
-	public static void buildHashIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
-	{
-		HashMap<String, int[][]> invertedCompressedIndex = compressIndex(invertedIndex);
-		
-		FileOutputStream fos = new FileOutputStream(indexFilePath);
-		ObjectOutputStream out = new ObjectOutputStream(fos);
-		out.writeObject(invertedCompressedIndex);
-	}
-	
+
 	@SuppressWarnings("deprecation")
 	public static void buildSQLIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex, String filename) throws IOException
 	{
@@ -439,5 +513,34 @@ class Assignment1
 			e.printStackTrace();
 		}
 		
+	}
+	
+	public static void buildCharArrIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
+	{
+		TreeSet<String> keys = new TreeSet<String>(invertedIndex.keySet());
+		Iterator<String> it = keys.iterator();
+		char[][] tokens = new char[keys.size()][maxTokenLength];
+		int[][] pmidsPerToken = new int[keys.size()][];
+		int tokenIndex = 0;
+		while(it.hasNext())
+		{
+			String key = (String)it.next();
+			tokens[tokenIndex] = key.toCharArray();
+			Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
+			int lsize = locations.size();
+			pmidsPerToken[tokenIndex] = new int[lsize];
+			for (int i = 0; i < lsize; i++)
+			{
+				pmidsPerToken[tokenIndex][i] = locations.get(i).pmid;
+			}
+			tokenIndex++;
+		}
+		
+		FileOutputStream fos = new FileOutputStream(indexFilePath);
+		ObjectOutputStream obj = new ObjectOutputStream(new BufferedOutputStream(fos));
+		obj.writeObject(tokens);
+		obj.writeObject(pmidsPerToken);
+		obj.close();
+		fos.close();
 	}
 }
