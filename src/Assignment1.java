@@ -39,11 +39,9 @@ class Assignment1
 
 	public static void main(String[] args)
 	{
-		System.out.println(Arrays.deepToString(args));
-		System.exit(0);
 		if(args.length == 0)
 		{
-			System.out.println("usage:\nAssignment1 -index xmlfile [indexType:charArr|sql]\nor\nAssignment1 [indexType:sql|charArr] token1 token2 ...\nor\nAssignment1 [indexType:sql|charArr] \"token1 token2...\"");
+			printUsage();
 			return;
 		}
 		else if(args.length >= 2 && args[0].equals("-index"))
@@ -51,7 +49,6 @@ class Assignment1
 			// ------------------------------ create index ----------------------------------
 			String filename = args[1];
 			try {
-				
 				HashMap<String, Vector<MedlineTokenLocation>> invertedIndex  = buildIndex(filename);
 				  
 				if(args.length >= 3)
@@ -79,26 +76,98 @@ class Assignment1
 		else
 		{
 			// ------------------------------ search ----------------------------------
-			File indexFile = new File(indexFilePath);
-			File indexFileDB = new File(indexFileDBPath);
-			if(!indexFile.exists() && !indexFileDB.exists())
+			if(args[0].indexOf(" ") == -1)
 			{
-				System.out.println("ERROR: must build index first, use Assignment1 -index [xmlfile]");
-				return;
-			}
-			
-			// phrase search
-			if(args[0].split(" ").length > 1)
-			{
-				phraseQuerySQL(args);
+				//System.out.println("token search:");
+				
+				// token search
+				if(args.length >= 2)
+				{
+					if(args[args.length-1].equals("-charArr"))
+					{
+						// TODO delete
+						//System.out.println("using charArr index");
+						
+						String[] tokens = new String[args.length-1];
+						System.arraycopy(args, 0, tokens, 0, args.length-1);
+						File indexFile = new File("charArr_" + indexFilePath);
+						if(!indexFile.exists())
+						{
+							System.out.println("ERROR: must build index first");
+							printUsage();
+							System.exit(1);
+						}
+						try{
+							boolQueryCharArrIndex(indexFile, tokens);
+						}
+						catch(ClassNotFoundException e)
+						{
+							e.printStackTrace();
+						}
+						catch(IOException e)
+						{
+							e.printStackTrace();
+						}
+					}
+					else if(args[args.length-1].equals("-sql"))
+					{
+						// TODO delete
+						//System.out.println("using sql index");
+						
+						String[] tokens = new String[args.length-1];
+						System.arraycopy(args, 0, tokens, 0, args.length-1);
+						boolQuerySQL(tokens, true);
+					}
+					else
+					{
+						// the last arg (possibly unsupported index type) is treatet as a token
+						defaultBoolQuery(args);
+					}
+				}
+				else
+				{
+					// numArgs = 1
+					defaultBoolQuery(args);
+				}
 			}
 			else
 			{
-				boolQuery(args);
+				// phrase search
+				//System.out.println("phrase search");
+				if(args.length > 1)
+				{
+					if(args[args.length-1].equals("-charArr"))
+					{
+						// using charArr index
+						// TODO
+					}
+					else if(args[args.length-1].equals("-sql"))
+					{
+						// using sql index
+						phraseQuerySQL(args[0].split(" "));
+					}
+					else
+					{
+						System.out.println("WARNING: unsupported index type: " + args[args.length-1]);
+						System.out.println("Using default index: sql");
+						// using sql index
+						phraseQuerySQL(args[0].split(" "));
+					}
+				}
+				else
+				{
+					// using sql index
+					phraseQuerySQL(args[0].split(" "));
+				}
 			}
 		}
-		// TODO: get filename from arguments		
-		
+	}
+	
+	public static void defaultBoolQuery(String[] tokens)
+	{
+		// TODO delete
+		//System.out.println("using default index [sql]");
+		boolQuerySQL(tokens, true);
 	}
 
 	public static void boolQuery(String[] querytokens)
@@ -199,6 +268,13 @@ class Assignment1
 	public static Vector<Integer> boolQuerySQL(String[] querytokens, boolean talkative)
 	{
 		File dbFile = new File(indexFileDBPath);
+		if(!dbFile.exists())
+		{
+			System.out.println("ERROR: must build index first");
+			printUsage();
+			System.exit(1);
+		}
+
 		SqlJetDb db;
         Vector<Integer> documents = new Vector<Integer>();
 
@@ -542,5 +618,10 @@ class Assignment1
 		obj.writeObject(pmidsPerToken);
 		obj.close();
 		fos.close();
+	}
+	
+	public static void printUsage()
+	{
+		System.out.println("usage:\nAssignment1 -index xmlfile [indexType:charArr|sql]\nor\nAssignment1 [indexType:sql|charArr] token1 token2 ...\nor\nAssignment1 [indexType:sql|charArr] \"token1 token2...\"");
 	}
 }
