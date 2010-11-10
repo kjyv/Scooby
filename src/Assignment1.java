@@ -336,13 +336,9 @@ class Assignment1
 		return documents;
 	}
 	
-	//some string joining
-	
-
-
-	
 	public static void phraseQuerySQL(String[] querytokens) {
-		//we have a phrase in args[0] without ""
+		//we have a phrase in args[0] without "" and maybe tokens in the rest
+		
 		Vector<Integer> documents = boolQuerySQL(querytokens, false);
 		File dbFile = new File(indexFileDBPath);      
 		SqlJetDb db;
