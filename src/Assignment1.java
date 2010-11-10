@@ -98,7 +98,8 @@ class Assignment1
 							System.exit(1);
 						}
 						try{
-							boolQueryCharArrIndex(indexFile, tokens);
+							Set<Integer> pmids = boolQueryCharArrIndex(indexFile, tokens);
+							System.out.println("found " + pmids.size() + " containing documents");
 						}
 						catch(ClassNotFoundException e)
 						{
@@ -622,6 +623,6 @@ class Assignment1
 	
 	public static void printUsage()
 	{
-		System.out.println("usage:\nAssignment1 -index xmlfile [indexType:charArr|sql]\nor\nAssignment1 [indexType:sql|charArr] token1 token2 ...\nor\nAssignment1 [indexType:sql|charArr] \"token1 token2...\"");
+		System.out.println("usage:\nAssignment1 -index xmlfile [-sql|-charArr]\nor\nAssignment1 token1 token2 ... [-sql|-charArr]\nor\nAssignment1 \"token1 token2...\" [-sql|-charArr]");
 	}
 }
