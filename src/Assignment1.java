@@ -164,7 +164,6 @@ class Assignment1
 	
 	public static void defaultBoolQuery(String[] tokens)
 	{
-		// TODO delete
 		//System.out.println("using default index [sql]");
 		boolQuerySQLNative(tokens);
 	}
@@ -280,15 +279,40 @@ class Assignment1
 		}
 		
         Vector<Integer> documents = new Vector<Integer>();
-        boolean wasInitiallyFilled = false;
+        //boolean wasInitiallyFilled = false;
 		try {
 			Connection conn =
 			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
-			Statement stat = conn.createStatement();
-			//PreparedStatement prep = conn.prepareStatement(
-			//	    		"select * from index_doc where token = (?);");
+			//Statement stat = conn.createStatement();
+			StringBuilder sb = new StringBuilder(128);
+			sb.append("(");
+			for(int i = 0; i < querytokens.length; i++)
+			{
+				sb.append("?,");
+			}
+			String tokenList = sb.substring(0, sb.length()-1) + ")";	 // = (?,?,?)
+			
+			PreparedStatement prep = conn.prepareStatement(
+					"select distinct doc_id from "+INDEX_TABLE_NAME+" where token IN "+tokenList+";");
+			for(int i = 0; i < querytokens.length; i++)
+			{
+				prep.setString(i+1, querytokens[i]);
+			}
+			
+				try
+				{
+					//ResultSet rs = stat.executeQuery("select doc_id from index_doc where token IN \""+ token + "\";");
+					ResultSet rs = prep.executeQuery();
+					try {		            	
+	            		while (rs.next()) {
+	            			documents.add(rs.getInt("doc_id"));
+	                	}
+	            	} finally {
+	            		rs.close();
+	            	}
 					
-				try {
+					
+					/*	
 					for (String token: querytokens)
 					{
 
@@ -315,11 +339,13 @@ class Assignment1
 			            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
 			            	documents.retainAll(current_docs_set);
 			            }
-					}
+					}*/
 				} finally {
-					stat.close();
+					prep.close();
+					//stat.close();
 					conn.close();	
 				}
+				
 
 		} catch (SQLException e) {
 			e.printStackTrace();
