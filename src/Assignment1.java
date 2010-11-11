@@ -222,13 +222,17 @@ class Assignment1
 		// each entry in tokenIndexWithPmidLength has the form {tokenIndex, numberOfFoundPmids}
 		
 		// perform intersections
+		boolean wasInitiallyFilled = false;
 		for(int j = 0; j < tokens.length; j++)
 		{
 			int sortedByPmidSizeIndex = tokenIndexWithPmidLength.get(j).get(0);
 			HashSet<Integer> nextIntersectionSet = pmidsForEachToken.get(sortedByPmidSizeIndex);
 			// fill initially or intersect
-			if(j == 0)
+			if(!wasInitiallyFilled && pmids.size() == 0)
+			{
 				pmids.addAll(nextIntersectionSet);
+				wasInitiallyFilled = true;
+			}
 			else
 				pmids.retainAll(nextIntersectionSet);
 			if(pmids.size() == 0)
@@ -276,7 +280,7 @@ class Assignment1
 		}
 		
         Vector<Integer> documents = new Vector<Integer>();
-
+        boolean wasInitiallyFilled = false;
 		try {
 			Connection conn =
 			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
@@ -301,14 +305,15 @@ class Assignment1
 		            		rs.close();
 		            	}
 		            	
-		                if (documents.size() > 0)
+		            	if (!wasInitiallyFilled && documents.size() == 0)
 			            {
-			        		//intersect with documents from before (AND)
-			            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
-			            	documents.retainAll(current_docs_set);
-			            } else {
 			            	//keep current documents for initial set
 			            	documents = current_docs;
+			            	wasInitiallyFilled = true;
+			            } else {
+			            	//intersect with documents from before (AND)
+			            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
+			            	documents.retainAll(current_docs_set);
 			            }
 					}
 				} finally {
@@ -343,7 +348,7 @@ class Assignment1
 		SqlJetDb db;
 
         Vector<Integer> documents = new Vector<Integer>();
-
+        boolean wasInitiallyFilled = false;
 		try {
 			db = SqlJetDb.open(dbFile, true);
 					
@@ -369,14 +374,15 @@ class Assignment1
 		                cursor.close();		        
 		            }
 		            
-		            if (documents.size() > 0)
+		            if (!wasInitiallyFilled && documents.size() == 0)
 		            {
-		        		//intersect with documents from before (AND)
-		            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
-		            	documents.retainAll(current_docs_set);
-		            } else {
 		            	//keep current documents for initial set
 		            	documents = current_docs;
+		            	wasInitiallyFilled = true;
+		            } else {
+		            	//intersect with documents from before (AND)
+		            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
+		            	documents.retainAll(current_docs_set);
 		            }
 		            
 				} finally { 
