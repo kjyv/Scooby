@@ -514,7 +514,7 @@ class Assignment1
 				);
 			}
 		}
-		xml = null;
+
 		//System.out.println(invertedIndex.size());
 		return invertedIndex;
 	}
@@ -602,17 +602,19 @@ class Assignment1
 		}
 		
 		//also store documents in DB 	
+		//TODO: this is ugly code duplication, documents should be inserted while getting the tokens already
 		
 		String xml = readCorpus(filename);
 		// don't confuse <MedlineCitationSet> with <MedlineCitation owner=""...>
 		Pattern pCitation = Pattern.compile("<MedlineCitation( .+?)?>(.+?)</MedlineCitation>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
-		Pattern pAbstractTitle = Pattern.compile("<AbstractTitle.*?>(.+?)</AbstractTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+		Pattern pArticleTitle = Pattern.compile("<ArticleTitle.*?>(.+?)</ArticleTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Pattern pAbstractText = Pattern.compile("<AbstractText.*?>(.+?)</AbstractText>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Pattern pPmid = Pattern.compile("<pmid>(\\d+)</pmid>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
 		Matcher mCitation = pCitation.matcher(xml);
 		
 		String medlineCitation;
-		Matcher mAbstractTitle, mAbstractText, mPmid;
+		Matcher mArticleTitle, mAbstractText, mPmid;
+		// naive tokenization: 99084 different tokens
 		
 		Vector<MedlineDocument> fullDocuments = new Vector<MedlineDocument>();
 				
@@ -629,10 +631,10 @@ class Assignment1
 				
 				MedlineDocument document = null;
 				
-				mAbstractTitle = pAbstractTitle.matcher(medlineCitation);
-				while(mAbstractTitle.find())
+				mArticleTitle = pArticleTitle.matcher(medlineCitation);
+				while(mArticleTitle.find())
 				{
-					String title = mAbstractTitle.group(1).toLowerCase();
+					String title = mArticleTitle.group(1).toLowerCase();
 		
 					document = new MedlineDocument(pmid, title, "");
 					fullDocuments.add(document);
