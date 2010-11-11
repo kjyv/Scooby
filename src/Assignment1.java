@@ -115,7 +115,7 @@ class Assignment1
 						
 						String[] tokens = new String[args.length-1];
 						System.arraycopy(args, 0, tokens, 0, args.length-1);
-						boolQuerySQL(tokens, true);
+						defaultBoolQuery(tokens);
 					}
 					else
 					{
@@ -166,12 +166,7 @@ class Assignment1
 	{
 		// TODO delete
 		//System.out.println("using default index [sql]");
-		boolQuerySQL(tokens, true);
-	}
-
-	public static void boolQuery(String[] querytokens)
-	{
-		boolQuerySQL(querytokens, true);
+		boolQuerySQLNative(tokens);
 	}
 	
 	public static Set<Integer> boolQueryCharArrIndex(File indexFile, String[] tokens) throws IOException, ClassNotFoundException
@@ -264,6 +259,77 @@ class Assignment1
 		return -1;
 	}
 	
+	public static void boolQuerySQLNative(String[] querytokens)
+	{
+		File dbFile = new File(indexFileDBPath);
+		if(!dbFile.exists())
+		{
+			System.out.println("ERROR: must build index first");
+			printUsage();
+			System.exit(1);
+		}
+
+		try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
+			e.printStackTrace();
+		}
+		
+        Vector<Integer> documents = new Vector<Integer>();
+
+		try {
+			Connection conn =
+			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
+			Statement stat = conn.createStatement();
+			//PreparedStatement prep = conn.prepareStatement(
+			//	    		"select * from index_doc where token = (?);");
+					
+				try {
+					for (String token: querytokens)
+					{
+
+		            	//documents for this token
+	            		Vector<Integer> current_docs = new Vector<Integer>();     
+
+						ResultSet rs = stat.executeQuery("select doc_id from index_doc where token = \""+ token + "\";");
+		            	try {		            	
+		            		while (rs.next()) {
+		            				current_docs.add(rs.getInt("doc_id"));
+		                	}
+		            				            		
+		            	} finally {
+		            		rs.close();
+		            	}
+		            	
+		                if (documents.size() > 0)
+			            {
+			        		//intersect with documents from before (AND)
+			            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
+			            	documents.retainAll(current_docs_set);
+			            } else {
+			            	//keep current documents for initial set
+			            	documents = current_docs;
+			            }
+					}
+				} finally {
+					stat.close();
+					conn.close();	
+				}
+
+		} catch (SQLException e) {
+			e.printStackTrace();
+		}
+		
+		for (Integer doc : documents)
+		{
+			System.out.println(doc);
+		}
+
+		System.out.print("Found "+ documents.size()+ " document(s) matching your query");
+		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
+		
+	}
+
 	public static Vector<Integer> boolQuerySQL(String[] querytokens, boolean talkative)
 	{
 		File dbFile = new File(indexFileDBPath);
@@ -274,51 +340,33 @@ class Assignment1
 			System.exit(1);
 		}
 				
-		//SqlJetDb db;
-		try {
-			Class.forName("org.sqlite.JDBC");
-		} catch (ClassNotFoundException e) {
-			e.printStackTrace();
-		}
+		SqlJetDb db;
 
         Vector<Integer> documents = new Vector<Integer>();
 
 		try {
-			
-			//db = SqlJetDb.open(dbFile, true);
-			Connection conn =
-			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
-			Statement stat = conn.createStatement();
-			//PreparedStatement prep = conn.prepareStatement(
-			//	    		"select * from index_doc where token = (?);");
+			db = SqlJetDb.open(dbFile, true);
 					
 			for (String token: querytokens)
 			{
 				//TODO: create array of document ids per token plus count, then sort by
 				//count and then intersect starting with smallest set 
-		        //db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
+		        db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
 				try {
-					//ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
-		            //ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
-		            //prep.setString(1, token);
+					ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
+		            ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
 		            
 		            //documents for this token
 		            Vector<Integer> current_docs = new Vector<Integer>();            
-		            //prep.execute();
-		            ResultSet rs = stat.executeQuery("select * from index_doc where token = \""+ token + "\";");
+
 		            try {
-		                //if (!cursor.eof()) {
-		            	//while (prep.getMoreResults()) {
-		            	while (rs.next()) {
-		                    //do {
-		                    	//current_docs.add((int)cursor.getInteger("doc_id"));
-		                    	//current_docs.add(prep.getResultSet().getInt("doc_id"));
-		            			current_docs.add(rs.getInt("doc_id"));
-		                    //} while(cursor.next());
+		                if (!cursor.eof()) {
+		                    do {
+		                    	current_docs.add((int)cursor.getInteger("doc_id"));
+		                    } while(cursor.next());
 		                }
 		            } finally {
-		                //cursor.close();
-			            rs.close();
+		                cursor.close();		        
 		            }
 		            
 		            if (documents.size() > 0)
@@ -332,14 +380,12 @@ class Assignment1
 		            }
 		            
 				} finally { 
-					//db.commit();
-					//prep.close();
-					conn.close();	
+					db.commit();
 				}
 			}
-		    //db.close();
+		    db.close();
 		    
-		} catch (SQLException e) {
+		} catch (SqlJetException e) {
 			e.printStackTrace();
 		}
 		
@@ -357,6 +403,7 @@ class Assignment1
 		
 		return documents;
 	}
+
 	
 	public static void phraseQuerySQL(String[] querytokens) {
 		//we have a phrase in args[0] without "" and maybe tokens in the rest
