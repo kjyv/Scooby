@@ -36,7 +36,7 @@
 <MedlinePgn>17-24</MedlinePgn>
 </Pagination>
 <Abstract>
-<AbstractText>This is, if you want to call it that way, a long text. Another sentence.
+<AbstractText>This is, if you want to call it that way, a long text. Another sentence. token1 token2 token1 token2
 line break</AbstractText>
 </Abstract>
 <AuthorList CompleteYN="Y">

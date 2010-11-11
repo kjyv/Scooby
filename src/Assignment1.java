@@ -36,6 +36,8 @@ class Assignment1
 
 	public static void main(String[] args)
 	{
+		long startTime = System.currentTimeMillis();
+
 		if(args.length == 0)
 		{
 			printUsage();
@@ -160,6 +162,7 @@ class Assignment1
 				}
 			}
 		}
+		System.out.println((System.currentTimeMillis() - startTime)/1000.0f + "s");
 	}
 	
 	public static void defaultBoolQuery(String[] tokens)
@@ -458,22 +461,26 @@ class Assignment1
 		
 			//for(Integer pmid : documents) {
 			// TODO: prepared statement / escaping of tokens
+			HashSet<Integer> documents = new HashSet<Integer>(128);
 				try {
-					
+					String phraseSearch = StringUtils.join(querytokens, " ");
 					ResultSet rs = stat.executeQuery(
-							"select pmid from "+ DOCUMENTS_TABLE_NAME +
+							"select pmid, "+
+							"(LENGTH(doc_body) - LENGTH(REPLACE(doc_body, \""+phraseSearch+"\", ''))) / "+phraseSearch.length()+" AS numOccurrences" +
+							" from "+ DOCUMENTS_TABLE_NAME +
 							" inner join ( select distinct doc_id from index_doc where token in (\""+
 							StringUtils.join(querytokens, "\", \"")+
-							"\")) on pmid = doc_id where doc_body like \"% "+
-							StringUtils.join(querytokens, " ")+ " %\";");
+							"\")) on pmid = doc_id where doc_body like \"%"+
+							phraseSearch+ "%\";");
 					
 					try {
-						int count = 0;
+						int count = 0;	// total number of phrase occurrences
 		            	while (rs.next()) {
-		            			System.out.println(rs.getInt("pmid"));
-		            			count++;
+	            			//System.out.println(rs.getInt("pmid"));
+	            			documents.add(rs.getInt("pmid"));
+	            			count+=rs.getInt("numOccurrences");
 		                }
-		            	System.out.println("Found "+ count +" document(s) matching your query.");
+		            	System.out.println("Found "+ documents.size() +" document(s) matching your query, containting phrase " + count + " times");
 		            } finally {
 			            rs.close();
 		            }
@@ -602,7 +609,6 @@ class Assignment1
 			try {
 				db.createTable("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)");				
 				db.createTable("CREATE TABLE " + DOCUMENTS_TABLE_NAME + " (pmid INTEGER, doc_title TEXT, doc_body TEXT)");
-				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
 			} finally {
 				db.commit();
 			}
@@ -626,6 +632,7 @@ class Assignment1
 	    		
 	    		//create after inserts for speed up 
 				db.createIndex("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
+				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
 			} finally { db.commit();}		
 
 	        db.close();
