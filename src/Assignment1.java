@@ -438,7 +438,6 @@ class Assignment1
 
 	
 	public static void phraseQuerySQL(String[] querytokens) {
-		//we have a phrase in args[0] without "" and maybe tokens in the rest
 		
 		//Vector<Integer> documents = boolQuerySQL(querytokens, false);
 		File dbFile = new File(indexFileDBPath);      
@@ -458,14 +457,16 @@ class Assignment1
 			//	    		"select * from index_doc where token = (?);");
 		
 			//for(Integer pmid : documents) {
+			// TODO: prepared statement / escaping of tokens
 				try {
+					
 					ResultSet rs = stat.executeQuery(
 							"select pmid from "+ DOCUMENTS_TABLE_NAME +
 							" inner join ( select distinct doc_id from index_doc where token in (\""+
 							StringUtils.join(querytokens, "\", \"")+
 							"\")) on pmid = doc_id where doc_body like \"% "+
 							StringUtils.join(querytokens, " ")+ " %\";");
-												
+					
 					try {
 						int count = 0;
 		            	while (rs.next()) {
@@ -598,7 +599,7 @@ class Assignment1
 	        }, SqlJetTransactionMode.WRITE);
 			
 			db.beginTransaction(SqlJetTransactionMode.WRITE);
-			try {            						
+			try {
 				db.createTable("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)");				
 				db.createTable("CREATE TABLE " + DOCUMENTS_TABLE_NAME + " (pmid INTEGER, doc_title TEXT, doc_body TEXT)");
 				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
