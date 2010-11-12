@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -28,7 +29,7 @@ class Assignment1
 {
 	final static String REGEXP_SPLIT_TOKENS = "\\s+";	// \s+ , multiple white spaces TODO: check if text contains markup tags
     final static String INDEX_TABLE_NAME = "index_doc";
-    final static String TOKEN_INDEX = "token_index";
+    final static String TOKEN_INDEX = "token_index", DOC_ID_INDEX = "doc_id_index";
     final static String DOCUMENTS_TABLE_NAME = "documents";
 	final static String indexFileDBPath = "index.db";
 	static String indexFilePath = "inverted_index";
@@ -49,7 +50,7 @@ class Assignment1
 			String filename = args[1];
 			try {
 				HashMap<String, Vector<MedlineTokenLocation>> invertedIndex  = buildIndex(filename);
-				  
+				
 				if(args.length >= 3)
 				{
 					if (args[2].equals("-charArr"))
@@ -286,82 +287,36 @@ class Assignment1
 		try {
 			Connection conn =
 			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
-			//Statement stat = conn.createStatement();
-			StringBuilder sb = new StringBuilder(128);
-			sb.append("(");
-			for(int i = 0; i < querytokens.length; i++)
-			{
-				sb.append("?,");
-			}
-			String tokenList = sb.substring(0, sb.length()-1) + ")";	 // = (?,?,?)
+
+			String tokenQuery = getSqlTokenQuery(querytokens);
+			PreparedStatement prep = conn.prepareStatement(tokenQuery + ";");
 			
-			PreparedStatement prep = conn.prepareStatement(
-					"select distinct doc_id from "+INDEX_TABLE_NAME+" where token IN "+tokenList+";");
 			for(int i = 0; i < querytokens.length; i++)
 			{
 				prep.setString(i+1, querytokens[i]);
 			}
 			
-				try
-				{
-					//ResultSet rs = stat.executeQuery("select doc_id from index_doc where token IN \""+ token + "\";");
-					ResultSet rs = prep.executeQuery();
-					try {		            	
-	            		while (rs.next()) {
-	            			documents.add(rs.getInt("doc_id"));
-	                	}
-	            	} finally {
-	            		rs.close();
-	            	}
-					
-					
-					/*	
-					for (String token: querytokens)
-					{
-
-		            	//documents for this token
-	            		Vector<Integer> current_docs = new Vector<Integer>();     
-
-						ResultSet rs = stat.executeQuery("select doc_id from index_doc where token = \""+ token + "\";");
-		            	try {		            	
-		            		while (rs.next()) {
-		            				current_docs.add(rs.getInt("doc_id"));
-		                	}
-		            				            		
-		            	} finally {
-		            		rs.close();
-		            	}
-		            	
-		            	if (!wasInitiallyFilled && documents.size() == 0)
-			            {
-			            	//keep current documents for initial set
-			            	documents = current_docs;
-			            	wasInitiallyFilled = true;
-			            } else {
-			            	//intersect with documents from before (AND)
-			            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
-			            	documents.retainAll(current_docs_set);
-			            }
-					}*/
-				} finally {
-					prep.close();
-					//stat.close();
-					conn.close();	
-				}
-				
+			try
+			{
+				ResultSet rs = prep.executeQuery();
+				try {
+            		while (rs.next()) {
+            			documents.add(rs.getInt("doc_id"));
+                	}
+            	} finally {
+            		rs.close();
+            	}
+			} finally {
+				prep.close();
+				//stat.close();
+				conn.close();	
+			}
 
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
 		
-		for (Integer doc : documents)
-		{
-			System.out.println(doc);
-		}
-
-		System.out.print("Found "+ documents.size()+ " document(s) matching your query");
-		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
-		
+		printOutput(documents);
 	}
 
 	public static Vector<Integer> boolQuerySQL(String[] querytokens, boolean talkative)
@@ -438,14 +393,26 @@ class Assignment1
 		
 		return documents;
 	}
+	
+	public static String getSqlTokenQuery(String[] tokens)
+	{
+		StringBuilder sb = new StringBuilder(256);
+		sb.append("select distinct t.doc_id from "+INDEX_TABLE_NAME+" t ");
+		for(int i = 0; i < tokens.length; i++)
+		{
+			sb.append(" JOIN "+INDEX_TABLE_NAME+" t"+i+" ON t"+i+".token=? AND t.doc_id = t"+i+".doc_id ");
+		}
+		return sb.toString();
+		/*
+		SELECT DISTINCT t.doc_id FROM INDEX_TABLE_NAME t
+		JOIN `test` t1 ON t1.token=? AND t.doc_id = t1.doc_id
+		JOIN `test` t2 ON t2.token=? AND t.doc_id = t2.doc_id
+		...
+		*/
+	}
 
 	
 	public static void phraseQuerySQL(String[] querytokens) {
-		
-		//Vector<Integer> documents = boolQuerySQL(querytokens, false);
-		File dbFile = new File(indexFileDBPath);      
-		//SqlJetDb db;
-		
 		try {
 			Class.forName("org.sqlite.JDBC");
 		} catch (ClassNotFoundException e) {
@@ -455,32 +422,39 @@ class Assignment1
 		try {			
 			Connection conn =
 			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
-			Statement stat = conn.createStatement();
-			//PreparedStatement prep = conn.prepareStatement(
-			//	    		"select * from index_doc where token = (?);");
-		
-			//for(Integer pmid : documents) {
-			// TODO: prepared statement / escaping of tokens
-			HashSet<Integer> documents = new HashSet<Integer>(128);
+
+			// build query
+			String phraseSearch = StringUtils.join(querytokens, " ");
+			String tokenQuery = getSqlTokenQuery(querytokens);
+			PreparedStatement prep = conn.prepareStatement(
+					"select pmid, "+
+					"(LENGTH(doc_body) - LENGTH(REPLACE(doc_body, ?, ''))) / "+phraseSearch.length()+" AS numOccurrences" +
+					" from "+ DOCUMENTS_TABLE_NAME +
+					" inner join ( " + tokenQuery + ")" +
+					" on pmid = doc_id where "+
+					"doc_body like ? "+
+					"or doc_title like ?"+
+					";");
+			prep.setString(1, phraseSearch);
+			for(int i = 0; i < querytokens.length; i++)
+			{
+				prep.setString(i+2, querytokens[i]);
+			}
+			prep.setString(querytokens.length+2, "%"+phraseSearch+"%");
+			prep.setString(querytokens.length+3, "%"+phraseSearch+"%");
+			
+			Vector<Integer> documents = new Vector<Integer>(128);
 				try {
-					String phraseSearch = StringUtils.join(querytokens, " ");
-					ResultSet rs = stat.executeQuery(
-							"select pmid, "+
-							"(LENGTH(doc_body) - LENGTH(REPLACE(doc_body, \""+phraseSearch+"\", ''))) / "+phraseSearch.length()+" AS numOccurrences" +
-							" from "+ DOCUMENTS_TABLE_NAME +
-							" inner join ( select distinct doc_id from index_doc where token in (\""+
-							StringUtils.join(querytokens, "\", \"")+
-							"\")) on pmid = doc_id where doc_body like \"%"+
-							phraseSearch+ "%\";");
+					ResultSet rs = prep.executeQuery();
 					
 					try {
 						int count = 0;	// total number of phrase occurrences
 		            	while (rs.next()) {
-	            			//System.out.println(rs.getInt("pmid"));
 	            			documents.add(rs.getInt("pmid"));
 	            			count+=rs.getInt("numOccurrences");
 		                }
-		            	System.out.println("Found "+ documents.size() +" document(s) matching your query, containting phrase " + count + " times");
+		            	System.out.println("Your phrase occurred " + count + " times.");
+		            	printOutput(documents);
 		            } finally {
 			            rs.close();
 		            }
@@ -609,13 +583,14 @@ class Assignment1
 			try {
 				db.createTable("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)");				
 				db.createTable("CREATE TABLE " + DOCUMENTS_TABLE_NAME + " (pmid INTEGER, doc_title TEXT, doc_body TEXT)");
+				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
 			} finally {
 				db.commit();
 			}
 						        
 	        //insert token index into db
 	        db.beginTransaction(SqlJetTransactionMode.WRITE);        
-			try {            
+			try {
 	            ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
 	            Set<String> keys = invertedIndex.keySet();
 	    		for(String key : keys)
@@ -626,14 +601,15 @@ class Assignment1
 	    			for ( Iterator<MedlineTokenLocation> i = locations.iterator(); i.hasNext();)
 	    			{    				
 	    				int location = i.next().pmid;
-	    				if(locationSet.add(new Integer(location))) { table.insert(key, location); }
+	    				boolean wasNotInList = locationSet.add(new Integer(location));
+	    				if(wasNotInList) { table.insert(key, location); }
 	    			}
 	    		}
 	    		
 	    		//create after inserts for speed up 
 				db.createIndex("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
-				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
-			} finally { db.commit();}		
+				db.createIndex("CREATE INDEX " + DOC_ID_INDEX + " ON "+ INDEX_TABLE_NAME +" (doc_id)");
+			} finally { db.commit();}
 
 	        db.close();
 	        
@@ -708,6 +684,24 @@ class Assignment1
 			e.printStackTrace();
 		}
 		
+		/* print all table contents
+		try{
+			db = SqlJetDb.open(dbFile, true);
+			db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
+			ISqlJetTable table = db.getTable(DOCUMENTS_TABLE_NAME);
+			ISqlJetCursor curs = table.open();
+			while(!curs.eof())
+			{
+				System.out.println(curs.getInteger(0) + " | " + curs.getString(1) + " | " + curs.getString(2));
+				curs.next();
+			}
+			curs.close();
+			db.close();
+		} catch(Exception e)
+		{
+			e.printStackTrace();
+		}
+		*/
 	}
 	
 	public static void buildCharArrIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
@@ -742,5 +736,15 @@ class Assignment1
 	public static void printUsage()
 	{
 		System.out.println("usage:\nAssignment1 -index xmlfile [-sql|-charArr]\nor\nAssignment1 token1 token2 ... [-sql|-charArr]\nor\nAssignment1 \"token1 token2...\" [-sql|-charArr]");
+	}
+	
+	public static void printOutput(Vector<Integer> documents)
+	{
+		System.out.print("Found "+ documents.size()+ " document(s) matching your query");
+		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
+		for (Integer doc : documents)
+		{
+			System.out.println(doc);
+		}
 	}
 }

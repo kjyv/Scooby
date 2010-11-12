@@ -3,7 +3,7 @@
                                     "http://www.nlm.nih.gov/databases/dtd/nlmmedline_080101.dtd">
 <MedlineCitationSet>
 <MedlineCitation Owner="NLM" Status="MEDLINE">
-<PMID>267801</PMID>
+<PMID>1</PMID>
 <DateCreated>
 <Year>1977</Year>
 <Month>09</Month>
@@ -31,13 +31,12 @@
 </JournalIssue>
 <Title>Minerva stomatologica</Title>
 </Journal>
-<ArticleTitle>[Hyperostosis on the alveolar process margin]</ArticleTitle>
+<ArticleTitle>title1 title2</ArticleTitle>
 <Pagination>
 <MedlinePgn>17-24</MedlinePgn>
 </Pagination>
 <Abstract>
-<AbstractText>This is, if you want to call it that way, a long text. Another sentence. token1 token2 token1 token2
-line break</AbstractText>
+<AbstractText>abstract1 abstract2</AbstractText>
 </Abstract>
 <AuthorList CompleteYN="Y">
 <Author ValidYN="Y">
@@ -94,3 +93,94 @@ line break</AbstractText>
 </MeshHeadingList>
 </MedlineCitation>
 </MedlineCitationSet>
+
+<MedlineCitation Owner="NLM" Status="MEDLINE">
+<PMID>2</PMID>
+<DateCreated>
+<Year>1977</Year>
+<Month>09</Month>
+<Day>17</Day>
+</DateCreated>
+<DateCompleted>
+<Year>1977</Year>
+<Month>09</Month>
+<Day>17</Day>
+</DateCompleted>
+<DateRevised>
+<Year>2006</Year>
+<Month>11</Month>
+<Day>15</Day>
+</DateRevised>
+<Article PubModel="Print">
+<Journal>
+<ISSN IssnType="Print">0026-4970</ISSN>
+<JournalIssue CitedMedium="Print">
+<Volume>26</Volume>
+<Issue>1</Issue>
+<PubDate>
+<MedlineDate>1977 Jan-Mar</MedlineDate>
+</PubDate>
+</JournalIssue>
+<Title>Minerva stomatologica</Title>
+</Journal>
+<ArticleTitle>title2 title3</ArticleTitle>
+<Pagination>
+<MedlinePgn>17-24</MedlinePgn>
+</Pagination>
+<Abstract>
+<AbstractText>abstract2 abstract3</AbstractText>
+</Abstract>
+<AuthorList CompleteYN="Y">
+<Author ValidYN="Y">
+<LastName>Calandriello</LastName>
+<ForeName>M</ForeName>
+<Initials>M</Initials>
+</Author>
+<Author ValidYN="Y">
+<LastName>Borsetti</LastName>
+<ForeName>A</ForeName>
+<Initials>A</Initials>
+</Author>
+</AuthorList>
+<Language>ita</Language>
+<PublicationTypeList>
+<PublicationType>English Abstract</PublicationType>
+<PublicationType>Journal Article</PublicationType>
+</PublicationTypeList>
+<VernacularTitle>Le iperostosi del margine osseo alveolare.</VernacularTitle>
+</Article>
+<MedlineJournalInfo>
+<Country>ITALY</Country>
+<MedlineTA>Minerva Stomatol</MedlineTA>
+<NlmUniqueID>0421071</NlmUniqueID>
+</MedlineJournalInfo>
+<CitationSubset>D</CitationSubset>
+<CitationSubset>IM</CitationSubset>
+<MeshHeadingList>
+<MeshHeading>
+<DescriptorName MajorTopicYN="N">Alveolar Process</DescriptorName>
+<QualifierName MajorTopicYN="Y">surgery</QualifierName>
+</MeshHeading>
+<MeshHeading>
+<DescriptorName MajorTopicYN="N">Exostoses</DescriptorName>
+<QualifierName MajorTopicYN="Y">surgery</QualifierName>
+</MeshHeading>
+<MeshHeading>
+<DescriptorName MajorTopicYN="N">Humans</DescriptorName>
+</MeshHeading>
+<MeshHeading>
+<DescriptorName MajorTopicYN="N">Male</DescriptorName>
+</MeshHeading>
+<MeshHeading>
+<DescriptorName MajorTopicYN="N">Mandible</DescriptorName>
+<QualifierName MajorTopicYN="N">surgery</QualifierName>
+</MeshHeading>
+<MeshHeading>
+<DescriptorName MajorTopicYN="N">Maxilla</DescriptorName>
+<QualifierName MajorTopicYN="N">surgery</QualifierName>
+</MeshHeading>
+<MeshHeading>
+<DescriptorName MajorTopicYN="N">Middle Aged</DescriptorName>
+</MeshHeading>
+</MeshHeadingList>
+</MedlineCitation>
