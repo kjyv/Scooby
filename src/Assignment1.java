@@ -1,20 +1,20 @@
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
+//import java.io.BufferedInputStream;
+//import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
+//import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.util.Collection;
-import java.util.Collections;
+//import java.io.ObjectInputStream;
+//import java.io.ObjectOutputStream;
+//import java.util.Collection;
+//import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
-import java.util.TreeSet;
+//import java.util.TreeSet;
 import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,7 +29,7 @@ class Assignment1
 {
 	final static String REGEXP_SPLIT_TOKENS = "\\s+";	// \s+ , multiple white spaces TODO: check if text contains markup tags
     final static String INDEX_TABLE_NAME = "index_doc";
-    final static String TOKEN_INDEX = "token_index", DOC_ID_INDEX = "doc_id_index";
+    final static String TOKEN_INDEX = "token_index", DOC_ID_INDEX = "doc_id_index", TOKEN_DOC_ID_INDEX = "token_doc_id_index";
     final static String DOCUMENTS_TABLE_NAME = "documents";
 	final static String indexFileDBPath = "index.db";
 	static String indexFilePath = "inverted_index";
@@ -50,26 +50,7 @@ class Assignment1
 			String filename = args[1];
 			try {
 				HashMap<String, Vector<MedlineTokenLocation>> invertedIndex  = buildIndex(filename);
-				
-				if(args.length >= 3)
-				{
-					if (args[2].equals("-charArr"))
-					{
-						indexFilePath = "charArr_" + indexFilePath;
-						buildCharArrIndex(invertedIndex);
-					}
-					// else if(args[2].equals())
-					else
-					{
-						// any other index type, including -sql
-						buildSQLIndex(invertedIndex, filename);
-					}
-				}
-				else
-				{
-					// no index type given, assume sql
-					buildSQLIndex(invertedIndex, filename);
-				}
+				buildSQLIndex(invertedIndex, filename);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
@@ -82,188 +63,16 @@ class Assignment1
 				//System.out.println("token search:");
 				
 				// token search
-				if(args.length >= 2)
-				{
-					if(args[args.length-1].equals("-charArr"))
-					{
-						// TODO delete
-						//System.out.println("using charArr index");
-						
-						String[] tokens = new String[args.length-1];
-						System.arraycopy(args, 0, tokens, 0, args.length-1);
-						File indexFile = new File("charArr_" + indexFilePath);
-						if(!indexFile.exists())
-						{
-							System.out.println("ERROR: must build index first");
-							printUsage();
-							System.exit(1);
-						}
-						try{
-							Set<Integer> pmids = boolQueryCharArrIndex(indexFile, tokens);
-							System.out.println("found " + pmids.size() + " containing documents");
-						}
-						catch(ClassNotFoundException e)
-						{
-							e.printStackTrace();
-						}
-						catch(IOException e)
-						{
-							e.printStackTrace();
-						}
-					}
-					else if(args[args.length-1].equals("-sql"))
-					{
-						// TODO delete
-						//System.out.println("using sql index");
-						
-						String[] tokens = new String[args.length-1];
-						System.arraycopy(args, 0, tokens, 0, args.length-1);
-						defaultBoolQuery(tokens);
-					}
-					else
-					{
-						// the last arg (possibly unsupported index type) is treated as a token
-						defaultBoolQuery(args);
-					}
-				}
-				else
-				{
-					// numArgs = 1
-					defaultBoolQuery(args);
-				}
+				boolQuerySQLNative(args);
 			}
 			else
 			{
 				// phrase search
 				//System.out.println("phrase search");
-				if(args.length > 1)
-				{
-					if(args[args.length-1].equals("-charArr"))
-					{
-						// using charArr index
-						// TODO
-					}
-					else if(args[args.length-1].equals("-sql"))
-					{
-						// using sql index
-						phraseQuerySQL(args[0].split(" "));
-					}
-					else
-					{
-						System.out.println("WARNING: unsupported index type: " + args[args.length-1]);
-						System.out.println("Using default index: sql");
-						// using sql index
-						phraseQuerySQL(args[0].split(" "));
-					}
-				}
-				else
-				{
-					// using sql index
-					phraseQuerySQL(args[0].split(" "));
-				}
+				phraseQuerySQL(args[0].split(" "));
 			}
 		}
 		System.out.println((System.currentTimeMillis() - startTime)/1000.0f + "s");
-	}
-	
-	public static void defaultBoolQuery(String[] tokens)
-	{
-		//System.out.println("using default index [sql]");
-		boolQuerySQLNative(tokens);
-	}
-	
-	public static Set<Integer> boolQueryCharArrIndex(File indexFile, String[] tokens) throws IOException, ClassNotFoundException
-	{
-		FileInputStream fis = new FileInputStream(indexFile);
-		ObjectInputStream objI = new ObjectInputStream(new BufferedInputStream(fis));
-		char[][] hashFunc = (char[][])objI.readObject();
-		int[][] pmidsPerToken = (int[][])objI.readObject();
-		objI.close();
-		fis.close();
-		
-		// TODO: use a TreeSet or HashSet for set intersection?
-		HashSet<Integer> pmids = new HashSet<Integer>(32768, 1.0f);	// 2^15, avoid re-hashing
-		
-		//--------------------------- determine intersection order -------------------------------------
-		
-		// indexed by its index in tokens[]
-		Vector<HashSet<Integer>> pmidsForEachToken = new Vector<HashSet<Integer>>(tokens.length);
-		// used to determine intersection order - sort tokenIndex'es by their number of found pmids
-		// i.e. {{0, [numOfFoundPmids]}, {1, [numOfFoundPmids]}, ...}
-		Vector<Vector<Integer>> tokenIndexWithPmidLength = new Vector<Vector<Integer>>(tokens.length);
-		// fill pmidsForEachToken
-		for(int j = 0; j < tokens.length; j++)
-		{
-			String token = tokens[j];
-			// get hash value
-			int tokenIndex = binSearchIndex(hashFunc, token);
-			if(tokenIndex == -1)
-			{
-				System.out.println("warning: token " + token + " could not be found, is ignored");
-				break;	// this is ok. no empty hashset has to be inserted into pmidsForEachToken becuase of intersection order algorithm
-			}
-			// query hash table
-			int[] pmidsForToken = pmidsPerToken[tokenIndex];
-			// convert int[] to HashSet<Integer> to be able to perform intersection
-			int len = pmidsForToken.length;
-			HashSet<Integer> pmidsForTokenSet = new HashSet<Integer>(len*2, 1.0f);
-			for (int i = 0; i < len; i++)
-			{
-				pmidsForTokenSet.add(pmidsForToken[i]);
-			}
-			pmidsForEachToken.add(pmidsForTokenSet);
-			
-			// fill tokenIndexWithPmidLength
-			Vector<Integer> tmp = new  Vector<Integer>(2);
-			tmp.add(j);
-			tmp.add(len);
-			tokenIndexWithPmidLength.add(tmp);
-		}
-		// sort pmidsForEachToken by descending number of pmids
-		Collections.sort(tokenIndexWithPmidLength, new PmidListIntersectionOrderComparator<Vector<Integer>>());
-		// the intersection order is now determined by the order of elements in tokenIndexWithPmidLength
-		// each entry in tokenIndexWithPmidLength has the form {tokenIndex, numberOfFoundPmids}
-		
-		// perform intersections
-		boolean wasInitiallyFilled = false;
-		for(int j = 0; j < tokens.length; j++)
-		{
-			int sortedByPmidSizeIndex = tokenIndexWithPmidLength.get(j).get(0);
-			HashSet<Integer> nextIntersectionSet = pmidsForEachToken.get(sortedByPmidSizeIndex);
-			// fill initially or intersect
-			if(!wasInitiallyFilled && pmids.size() == 0)
-			{
-				pmids.addAll(nextIntersectionSet);
-				wasInitiallyFilled = true;
-			}
-			else
-				pmids.retainAll(nextIntersectionSet);
-			if(pmids.size() == 0)
-				break;
-		}
-		return pmids;
-	}
-	
-	public static int binSearchIndex(char[][] hashFunc, String token)
-	{
-		int l = 0, r = hashFunc.length-1, m;
-		
-		while(l <= r)
-		{
-			m = (l+r)/2;
-			int comp = new String(hashFunc[m]).compareTo(token);
-			if(comp < 0)
-			{
-				l = m+1;
-			}
-			else if(comp > 0)
-			{
-				r = m-1;
-			}
-			else return m;
-		}
-		
-		return -1;
 	}
 	
 	public static void boolQuerySQLNative(String[] querytokens)
@@ -317,81 +126,6 @@ class Assignment1
 		}
 		
 		printOutput(documents);
-	}
-
-	public static Vector<Integer> boolQuerySQL(String[] querytokens, boolean talkative)
-	{
-		File dbFile = new File(indexFileDBPath);
-		if(!dbFile.exists())
-		{
-			System.out.println("ERROR: must build index first");
-			printUsage();
-			System.exit(1);
-		}
-				
-		SqlJetDb db;
-
-        Vector<Integer> documents = new Vector<Integer>();
-        boolean wasInitiallyFilled = false;
-		try {
-			db = SqlJetDb.open(dbFile, true);
-					
-			for (String token: querytokens)
-			{
-				//TODO: create array of document ids per token plus count, then sort by
-				//count and then intersect starting with smallest set 
-		        db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
-				try {
-					ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
-		            ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
-		            
-		            //documents for this token
-		            Vector<Integer> current_docs = new Vector<Integer>();            
-
-		            try {
-		                if (!cursor.eof()) {
-		                    do {
-		                    	current_docs.add((int)cursor.getInteger("doc_id"));
-		                    } while(cursor.next());
-		                }
-		            } finally {
-		                cursor.close();		        
-		            }
-		            
-		            if (!wasInitiallyFilled && documents.size() == 0)
-		            {
-		            	//keep current documents for initial set
-		            	documents = current_docs;
-		            	wasInitiallyFilled = true;
-		            } else {
-		            	//intersect with documents from before (AND)
-		            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
-		            	documents.retainAll(current_docs_set);
-		            }
-		            
-				} finally { 
-					db.commit();
-				}
-			}
-		    db.close();
-		    
-		} catch (SqlJetException e) {
-			e.printStackTrace();
-		}
-		
-		if(talkative)
-		{
-			for (Integer doc : documents)
-			{
-				System.out.println(doc);
-			}
-
-			System.out.print("Found "+ documents.size()+ " document(s) matching your query");
-			if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
-			
-		}
-		
-		return documents;
 	}
 	
 	public static String getSqlTokenQuery(String[] tokens)
@@ -609,6 +343,7 @@ class Assignment1
 	    		//create after inserts for speed up 
 				db.createIndex("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
 				db.createIndex("CREATE INDEX " + DOC_ID_INDEX + " ON "+ INDEX_TABLE_NAME +" (doc_id)");
+				db.createIndex("CREATE INDEX " + TOKEN_DOC_ID_INDEX + " ON "+ INDEX_TABLE_NAME +" (token, doc_id)");
 			} finally { db.commit();}
 
 	        db.close();
@@ -704,35 +439,6 @@ class Assignment1
 		*/
 	}
 	
-	public static void buildCharArrIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
-	{
-		TreeSet<String> keys = new TreeSet<String>(invertedIndex.keySet());
-		Iterator<String> it = keys.iterator();
-		char[][] tokens = new char[keys.size()][maxTokenLength];
-		int[][] pmidsPerToken = new int[keys.size()][];
-		int tokenIndex = 0;
-		while(it.hasNext())
-		{
-			String key = (String)it.next();
-			tokens[tokenIndex] = key.toCharArray();
-			Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
-			int lsize = locations.size();
-			pmidsPerToken[tokenIndex] = new int[lsize];
-			for (int i = 0; i < lsize; i++)
-			{
-				pmidsPerToken[tokenIndex][i] = locations.get(i).pmid;
-			}
-			tokenIndex++;
-		}
-		
-		FileOutputStream fos = new FileOutputStream(indexFilePath);
-		ObjectOutputStream obj = new ObjectOutputStream(new BufferedOutputStream(fos));
-		obj.writeObject(tokens);
-		obj.writeObject(pmidsPerToken);
-		obj.close();
-		fos.close();
-	}
-	
 	public static void printUsage()
 	{
 		System.out.println("usage:\nAssignment1 -index xmlfile [-sql|-charArr]\nor\nAssignment1 token1 token2 ... [-sql|-charArr]\nor\nAssignment1 \"token1 token2...\" [-sql|-charArr]");
@@ -748,3 +454,205 @@ class Assignment1
 		}
 	}
 }
+
+/*
+
+public static Set<Integer> boolQueryCharArrIndex(File indexFile, String[] tokens) throws IOException, ClassNotFoundException
+{
+	FileInputStream fis = new FileInputStream(indexFile);
+	ObjectInputStream objI = new ObjectInputStream(new BufferedInputStream(fis));
+	char[][] hashFunc = (char[][])objI.readObject();
+	int[][] pmidsPerToken = (int[][])objI.readObject();
+	objI.close();
+	fis.close();
+	
+	// TODO: use a TreeSet or HashSet for set intersection?
+	HashSet<Integer> pmids = new HashSet<Integer>(32768, 1.0f);	// 2^15, avoid re-hashing
+	
+	//--------------------------- determine intersection order -------------------------------------
+	
+	// indexed by its index in tokens[]
+	Vector<HashSet<Integer>> pmidsForEachToken = new Vector<HashSet<Integer>>(tokens.length);
+	// used to determine intersection order - sort tokenIndex'es by their number of found pmids
+	// i.e. {{0, [numOfFoundPmids]}, {1, [numOfFoundPmids]}, ...}
+	Vector<Vector<Integer>> tokenIndexWithPmidLength = new Vector<Vector<Integer>>(tokens.length);
+	// fill pmidsForEachToken
+	for(int j = 0; j < tokens.length; j++)
+	{
+		String token = tokens[j];
+		// get hash value
+		int tokenIndex = binSearchIndex(hashFunc, token);
+		if(tokenIndex == -1)
+		{
+			System.out.println("warning: token " + token + " could not be found, is ignored");
+			break;	// this is ok. no empty hashset has to be inserted into pmidsForEachToken becuase of intersection order algorithm
+		}
+		// query hash table
+		int[] pmidsForToken = pmidsPerToken[tokenIndex];
+		// convert int[] to HashSet<Integer> to be able to perform intersection
+		int len = pmidsForToken.length;
+		HashSet<Integer> pmidsForTokenSet = new HashSet<Integer>(len*2, 1.0f);
+		for (int i = 0; i < len; i++)
+		{
+			pmidsForTokenSet.add(pmidsForToken[i]);
+		}
+		pmidsForEachToken.add(pmidsForTokenSet);
+		
+		// fill tokenIndexWithPmidLength
+		Vector<Integer> tmp = new  Vector<Integer>(2);
+		tmp.add(j);
+		tmp.add(len);
+		tokenIndexWithPmidLength.add(tmp);
+	}
+	// sort pmidsForEachToken by descending number of pmids
+	Collections.sort(tokenIndexWithPmidLength, new PmidListIntersectionOrderComparator<Vector<Integer>>());
+	// the intersection order is now determined by the order of elements in tokenIndexWithPmidLength
+	// each entry in tokenIndexWithPmidLength has the form {tokenIndex, numberOfFoundPmids}
+	
+	// perform intersections
+	boolean wasInitiallyFilled = false;
+	for(int j = 0; j < tokens.length; j++)
+	{
+		int sortedByPmidSizeIndex = tokenIndexWithPmidLength.get(j).get(0);
+		HashSet<Integer> nextIntersectionSet = pmidsForEachToken.get(sortedByPmidSizeIndex);
+		// fill initially or intersect
+		if(!wasInitiallyFilled && pmids.size() == 0)
+		{
+			pmids.addAll(nextIntersectionSet);
+			wasInitiallyFilled = true;
+		}
+		else
+			pmids.retainAll(nextIntersectionSet);
+		if(pmids.size() == 0)
+			break;
+	}
+	return pmids;
+}
+
+public static int binSearchIndex(char[][] hashFunc, String token)
+{
+	int l = 0, r = hashFunc.length-1, m;
+	
+	while(l <= r)
+	{
+		m = (l+r)/2;
+		int comp = new String(hashFunc[m]).compareTo(token);
+		if(comp < 0)
+		{
+			l = m+1;
+		}
+		else if(comp > 0)
+		{
+			r = m-1;
+		}
+		else return m;
+	}
+	
+	return -1;
+}
+
+public static Vector<Integer> boolQuerySQL(String[] querytokens, boolean talkative)
+{
+	File dbFile = new File(indexFileDBPath);
+	if(!dbFile.exists())
+	{
+		System.out.println("ERROR: must build index first");
+		printUsage();
+		System.exit(1);
+	}
+			
+	SqlJetDb db;
+
+    Vector<Integer> documents = new Vector<Integer>();
+    boolean wasInitiallyFilled = false;
+	try {
+		db = SqlJetDb.open(dbFile, true);
+				
+		for (String token: querytokens)
+		{
+			//TODO: create array of document ids per token plus count, then sort by
+			//count and then intersect starting with smallest set 
+	        db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
+			try {
+				ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
+	            ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
+	            
+	            //documents for this token
+	            Vector<Integer> current_docs = new Vector<Integer>();            
+
+	            try {
+	                if (!cursor.eof()) {
+	                    do {
+	                    	current_docs.add((int)cursor.getInteger("doc_id"));
+	                    } while(cursor.next());
+	                }
+	            } finally {
+	                cursor.close();		        
+	            }
+	            
+	            if (!wasInitiallyFilled && documents.size() == 0)
+	            {
+	            	//keep current documents for initial set
+	            	documents = current_docs;
+	            	wasInitiallyFilled = true;
+	            } else {
+	            	//intersect with documents from before (AND)
+	            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
+	            	documents.retainAll(current_docs_set);
+	            }
+	            
+			} finally { 
+				db.commit();
+			}
+		}
+	    db.close();
+	    
+	} catch (SqlJetException e) {
+		e.printStackTrace();
+	}
+	
+	if(talkative)
+	{
+		for (Integer doc : documents)
+		{
+			System.out.println(doc);
+		}
+
+		System.out.print("Found "+ documents.size()+ " document(s) matching your query");
+		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
+		
+	}
+	
+	return documents;
+}
+
+public static void buildCharArrIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
+{
+	TreeSet<String> keys = new TreeSet<String>(invertedIndex.keySet());
+	Iterator<String> it = keys.iterator();
+	char[][] tokens = new char[keys.size()][maxTokenLength];
+	int[][] pmidsPerToken = new int[keys.size()][];
+	int tokenIndex = 0;
+	while(it.hasNext())
+	{
+		String key = (String)it.next();
+		tokens[tokenIndex] = key.toCharArray();
+		Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
+		int lsize = locations.size();
+		pmidsPerToken[tokenIndex] = new int[lsize];
+		for (int i = 0; i < lsize; i++)
+		{
+			pmidsPerToken[tokenIndex][i] = locations.get(i).pmid;
+		}
+		tokenIndex++;
+	}
+	
+	FileOutputStream fos = new FileOutputStream(indexFilePath);
+	ObjectOutputStream obj = new ObjectOutputStream(new BufferedOutputStream(fos));
+	obj.writeObject(tokens);
+	obj.writeObject(pmidsPerToken);
+	obj.close();
+	fos.close();
+}
+
+*/
