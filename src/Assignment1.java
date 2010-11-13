@@ -61,7 +61,10 @@ class Assignment1
 			if(args[0].indexOf(" ") == -1)
 			{
 				//System.out.println("token search:");
-				
+				for(int i = 0; i < args.length; i++)
+				{
+					args[i] = args[i].toLowerCase();
+				}
 				// token search
 				boolQuerySQLNative(args);
 			}
@@ -69,7 +72,12 @@ class Assignment1
 			{
 				// phrase search
 				//System.out.println("phrase search");
-				phraseQuerySQL(args[0].split(" "));
+				String[] tokens = args[0].split(" ");
+				for(int i = 0; i < tokens.length; i++)
+				{
+					tokens[i] = tokens[i].toLowerCase();
+				}
+				phraseQuerySQL(tokens);
 			}
 		}
 		System.out.println((System.currentTimeMillis() - startTime)/1000.0f + "s");

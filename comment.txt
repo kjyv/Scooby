@@ -1,1 +1,7 @@
 naive Tokenisierung: 99084 verschiedene tokens
+index auf (doc_id, token) war nötig, sonst:
+	cancer : 0.3 s
+	lung cancer: 8s
+	"lung cancer": 6.3s
+jetzt:
+	lung cancer und "lung cancer" bei 0.3 bis 0.4 s
