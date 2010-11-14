@@ -217,6 +217,11 @@ class Assignment1
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		}
+		try {
+			conn = DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
+		} catch (SQLException e1) {
+			e1.printStackTrace();
+		}
 		
 		try {
 			// build query
