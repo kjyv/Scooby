@@ -3,16 +3,16 @@
     <!--this file was created by Eclipse Runnable JAR Export Wizard-->
     <!--ANT 1.7 is required                                        -->
     <target name="create_run_jar">
-        <jar destfile="scooby.jar" filesetmanifest="mergewithoutmain">
+        <jar destfile="/home/stefan/develop/scooby/scooby.jar" filesetmanifest="mergewithoutmain">
             <manifest>
                 <attribute name="Main-Class" value="Assignment1"/>
                 <attribute name="Class-Path" value="."/>
             </manifest>
-            <fileset dir="bin"/>
-            <zipfileset excludes="META-INF/*.SF" src="lib/antlr-runtime-3.1.3.jar"/>
-            <zipfileset excludes="META-INF/*.SF" src="lib/org.tmatesoft.sqljet_1.1.0.b955.jar"/>
-            <zipfileset excludes="META-INF/*.SF" src="lib/commons-lang3-3.0-beta.jar"/>
-            <zipfileset excludes="META-INF/*.SF" src="lib/sqlitejdbc-v056.jar"/>
+            <fileset dir="/home/stefan/develop/scooby/bin"/>
+            <zipfileset excludes="META-INF/*.SF" src="/home/stefan/develop/scooby/lib/antlr-runtime-3.1.3.jar"/>
+            <zipfileset excludes="META-INF/*.SF" src="/home/stefan/develop/scooby/lib/org.tmatesoft.sqljet_1.1.0.b955.jar"/>
+            <zipfileset excludes="META-INF/*.SF" src="/home/stefan/develop/scooby/lib/commons-lang3-3.0-beta.jar"/>
+            <zipfileset excludes="META-INF/*.SF" src="/home/stefan/develop/scooby/lib/sqlite-jdbc-3.7.2.jar"/>
         </jar>
     </target>
 </project>

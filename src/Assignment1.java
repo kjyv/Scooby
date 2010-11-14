@@ -229,7 +229,9 @@ class Assignment1
 			String tokenQuery = getSqlTokenQuery(querytokens);
 			PreparedStatement prep = conn.prepareStatement(
 					"select pmid, "+
-					"(LENGTH(doc_body) - LENGTH(REPLACE(doc_body, ?, ''))) / "+phraseSearch.length()+" AS numOccurrences" +
+					"((LENGTH(doc_body) - LENGTH(REPLACE(doc_body, ?, ''))) / "+phraseSearch.length()+")"+
+					"+ ((LENGTH(doc_title) - LENGTH(REPLACE(doc_title, ?, ''))) / "+phraseSearch.length()+")"+
+					"AS numOccurrences" +
 					" from "+ DOCUMENTS_TABLE_NAME +
 					" inner join ( " + tokenQuery + ")" +
 					" on pmid = doc_id where "+
@@ -237,13 +239,14 @@ class Assignment1
 					"or doc_title like ?"+
 					";");
 			prep.setString(1, phraseSearch);
+			prep.setString(2, phraseSearch);
 			String[] sortedQueryTokens = orderTokens(querytokens);
 			for(int i = 0; i < sortedQueryTokens.length; i++)
 			{
-				prep.setString(i+2, sortedQueryTokens[i]);
+				prep.setString(i+3, sortedQueryTokens[i]);
 			}
-			prep.setString(querytokens.length+2, "%"+phraseSearch+"%");
 			prep.setString(querytokens.length+3, "%"+phraseSearch+"%");
+			prep.setString(querytokens.length+4, "%"+phraseSearch+"%");
 			
 			Vector<Integer> documents = new Vector<Integer>(128);
 				try {
