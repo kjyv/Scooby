@@ -41,7 +41,7 @@ class Assignment1
 
 	public static void main(String[] args)
 	{
-		long startTime = System.currentTimeMillis();
+		//long startTime = System.currentTimeMillis();
 
 		if(args.length == 0)
 		{
@@ -85,7 +85,7 @@ class Assignment1
 				phraseQuerySQL(tokens);
 			}
 		}
-		System.out.println((System.currentTimeMillis() - startTime)/1000.0f + "s");
+		//System.out.println((System.currentTimeMillis() - startTime)/1000.0f + "s");
 	}
 	
 	public static void boolQuerySQLNative(String[] querytokens)
