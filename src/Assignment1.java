@@ -10,10 +10,13 @@ import java.io.InputStreamReader;
 //import java.io.ObjectOutputStream;
 //import java.util.Collection;
 //import java.util.Collections;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
+import java.util.TreeSet;
 //import java.util.TreeSet;
 import java.util.Vector;
 import java.util.regex.Matcher;
@@ -34,6 +37,7 @@ class Assignment1
 	final static String indexFileDBPath = "index.db";
 	static String indexFilePath = "inverted_index";
 	static int maxTokenLength = 0;	// stores the longest found token's length
+	static Connection conn;	// DB connection
 
 	public static void main(String[] args)
 	{
@@ -44,7 +48,8 @@ class Assignment1
 			printUsage();
 			return;
 		}
-		else if(args.length >= 2 && args[0].equals("-index"))
+
+		if(args.length >= 2 && args[0].equals("-index"))
 		{
 			// ------------------------------ create index ----------------------------------
 			String filename = args[1];
@@ -98,19 +103,22 @@ class Assignment1
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		}
+		try {
+			conn = DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
+		} catch (SQLException e1) {
+			e1.printStackTrace();
+		}
 		
         Vector<Integer> documents = new Vector<Integer>();
         //boolean wasInitiallyFilled = false;
 		try {
-			Connection conn =
-			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
-
 			String tokenQuery = getSqlTokenQuery(querytokens);
 			PreparedStatement prep = conn.prepareStatement(tokenQuery + ";");
 			
-			for(int i = 0; i < querytokens.length; i++)
+			String[] sortedQueryTokens = orderTokens(querytokens);
+			for(int i = 0; i < sortedQueryTokens.length; i++)
 			{
-				prep.setString(i+1, querytokens[i]);
+				prep.setString(i+1, sortedQueryTokens[i]);
 			}
 			
 			try
@@ -136,7 +144,7 @@ class Assignment1
 		printOutput(documents);
 	}
 	
-	public static String getSqlTokenQuery(String[] tokens)
+	public static String getSqlTokenQuery(String[] tokens) throws SQLException
 	{
 		StringBuilder sb = new StringBuilder(256);
 		sb.append("select distinct t.doc_id from "+INDEX_TABLE_NAME+" t ");
@@ -152,6 +160,55 @@ class Assignment1
 		...
 		*/
 	}
+	
+	public static String[] orderTokens(String[] tokens) throws SQLException
+	{
+		// orders tokens by their frequency, ascending
+		StringBuilder sb = new StringBuilder(256);
+		sb.append("SELECT ");
+		for(int i = 0; i < tokens.length; i++)
+		{
+			sb.append("(SELECT COUNT(*) FROM " + INDEX_TABLE_NAME + " WHERE token = ?),");
+		}
+		String query = sb.substring(0, sb.length()-1);
+		PreparedStatement tokenCounts = conn.prepareStatement(query);
+		// escape
+		for(int i = 0; i < tokens.length; i++)
+		{
+			tokenCounts.setString(i+1, tokens[i]);
+		}
+		ResultSet rs = tokenCounts.executeQuery();
+		// tree set will contain {count, tokenIndex}. sort by count
+		TreeSet<Integer[]> toBeSorted = new TreeSet<Integer[]>(new Comparator<Integer[]>() {
+    	    public int compare(Integer[] arg1, Integer[] arg2) {
+    	        int comp = arg1[0] - arg2[0];
+    	        if(comp == 0)
+    	        	return -1;	// so that none are equal (which is true, because indices are different)
+    	        return comp;
+    	      }
+    	    });
+		try
+		{
+			rs.next();	// get first and only row
+			for (int i = 0; i < tokens.length; i++)
+			{
+				Integer[] tmp = {new Integer(rs.getInt(i+1)), new Integer(i)};
+				toBeSorted.add(tmp);	// inserts in ascending order of token count (see comparator above)
+			}
+    	} finally {
+    		rs.close();
+    	}
+    	
+    	String[] sortedTokens = new String[tokens.length];
+    	
+    	int i = 0;
+    	for(Integer[] token : toBeSorted)
+    	{
+    		sortedTokens[i] = tokens[token[1]];
+    		i++;
+    	}
+    	return sortedTokens;
+	}
 
 	
 	public static void phraseQuerySQL(String[] querytokens) {
@@ -161,10 +218,7 @@ class Assignment1
 			e.printStackTrace();
 		}
 		
-		try {			
-			Connection conn =
-			      DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
-
+		try {
 			// build query
 			String phraseSearch = StringUtils.join(querytokens, " ");
 			String tokenQuery = getSqlTokenQuery(querytokens);
@@ -178,9 +232,10 @@ class Assignment1
 					"or doc_title like ?"+
 					";");
 			prep.setString(1, phraseSearch);
-			for(int i = 0; i < querytokens.length; i++)
+			String[] sortedQueryTokens = orderTokens(querytokens);
+			for(int i = 0; i < sortedQueryTokens.length; i++)
 			{
-				prep.setString(i+2, querytokens[i]);
+				prep.setString(i+2, sortedQueryTokens[i]);
 			}
 			prep.setString(querytokens.length+2, "%"+phraseSearch+"%");
 			prep.setString(querytokens.length+3, "%"+phraseSearch+"%");
@@ -307,79 +362,76 @@ class Assignment1
 	{
 		File dbFile = new File(indexFileDBPath);
         dbFile.delete();       
-		SqlJetDb db;
 
-		// store contents of token index into an SQLite DB
-		try {
-			db = SqlJetDb.open(dbFile, true);
-			db.getOptions().setAutovacuum(true);
-			
-			db.runTransaction(new ISqlJetTransaction() {
-			    public Object run(SqlJetDb db) throws SqlJetException {
-					db.getOptions().setUserVersion(1);
-					return true;
-			    }
-	        }, SqlJetTransactionMode.WRITE);
-			
-			db.beginTransaction(SqlJetTransactionMode.WRITE);
-			try {
-				db.createTable("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER)");				
-				db.createTable("CREATE TABLE " + DOCUMENTS_TABLE_NAME + " (pmid INTEGER, doc_title TEXT, doc_body TEXT)");
-				db.createIndex("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
-			} finally {
-				db.commit();
-			}
-						        
-	        //insert token index into db
-	        db.beginTransaction(SqlJetTransactionMode.WRITE);        
-			try {
-	            ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
-	            Set<String> keys = invertedIndex.keySet();
-	    		for(String key : keys)
-	    		{
-	    			//put locations in set so we only insert unique pairs
-	    			Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
-	    			HashSet<Integer> locationSet = new HashSet<Integer>(locations.size());
-	    			for ( Iterator<MedlineTokenLocation> i = locations.iterator(); i.hasNext();)
-	    			{    				
-	    				int location = i.next().pmid;
-	    				boolean wasNotInList = locationSet.add(new Integer(location));
-	    				if(wasNotInList) { table.insert(key, location); }
-	    			}
-	    		}
-	    		
-	    		//create after inserts for speed up 
-				db.createIndex("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
-				db.createIndex("CREATE INDEX " + DOC_ID_INDEX + " ON "+ INDEX_TABLE_NAME +" (doc_id)");
-				db.createIndex("CREATE INDEX " + TOKEN_DOC_ID_INDEX + " ON "+ INDEX_TABLE_NAME +" (token, doc_id)");
-			} finally { db.commit();}
-
-	        db.close();
-	        
-		} catch (SqlJetException e) {
+        try {
+			Class.forName("org.sqlite.JDBC");
+		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		}
+        try {
+			conn = DriverManager.getConnection("jdbc:sqlite:"+indexFileDBPath);
+		} catch (SQLException e1) {
+			e1.printStackTrace();
+		}
 		
-		//also store documents in DB 	
-		//TODO: this is ugly code duplication, documents should be inserted while getting the tokens already
-		
-		String xml = readCorpus(filename);
-		// don't confuse <MedlineCitationSet> with <MedlineCitation owner=""...>
-		Pattern pCitation = Pattern.compile("<MedlineCitation( .+?)?>(.+?)</MedlineCitation>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
-		Pattern pArticleTitle = Pattern.compile("<ArticleTitle.*?>(.+?)</ArticleTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
-		Pattern pAbstractText = Pattern.compile("<AbstractText.*?>(.+?)</AbstractText>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
-		Pattern pPmid = Pattern.compile("<pmid>(\\d+)</pmid>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
-		Matcher mCitation = pCitation.matcher(xml);
-		
-		String medlineCitation;
-		Matcher mArticleTitle, mAbstractText, mPmid;
-		// naive tokenization: 99084 different tokens
-		
-		Vector<MedlineDocument> fullDocuments = new Vector<MedlineDocument>();
-				
-		try {
-			db = SqlJetDb.open(dbFile, true);
+		try{	// catch SQLException
+			conn.setAutoCommit(false);	// one TA for all inserts together
+			Statement statement = conn.createStatement();	// create tables, indices
+	
+			// store contents of token index into an SQLite DB
+			statement.execute("CREATE TABLE " + INDEX_TABLE_NAME + " (token VARCHAR(128), doc_id INTEGER);");
+			statement.execute("CREATE TABLE " + DOCUMENTS_TABLE_NAME + " (pmid INTEGER, doc_title TEXT, doc_body TEXT);");
+			statement.execute("CREATE INDEX documents_index ON "+ DOCUMENTS_TABLE_NAME +" (pmid)");
 			
+			PreparedStatement prepToken = conn.prepareStatement("INSERT INTO "+INDEX_TABLE_NAME+" (token, doc_id) VALUES (?, ?);"),
+				prepDocument = conn.prepareStatement("INSERT INTO "+DOCUMENTS_TABLE_NAME+" (pmid, doc_title, doc_body) VALUES (?, ?, ?);");
+						        
+	        //insert token index into db
+	        Set<String> keys = invertedIndex.keySet();
+			for(String key : keys)
+			{
+				//put locations in set so we only insert unique pairs
+				Vector<MedlineTokenLocation> locations = invertedIndex.get(key);
+				HashSet<Integer> locationSet = new HashSet<Integer>(locations.size());
+				for ( Iterator<MedlineTokenLocation> i = locations.iterator(); i.hasNext();)
+				{    				
+					int location = i.next().pmid;
+					boolean wasNotInList = locationSet.add(new Integer(location));
+					if(wasNotInList)
+					{
+						//table.insert(key, location);
+						prepToken.setString(1, key);
+						prepToken.setInt(2, location);
+						prepToken.execute();
+					}
+				}
+			}
+			
+			//create after inserts for speed up 
+			statement.execute("CREATE INDEX " + TOKEN_INDEX + " ON "+ INDEX_TABLE_NAME +" (token)");
+			statement.execute("CREATE INDEX " + DOC_ID_INDEX + " ON "+ INDEX_TABLE_NAME +" (doc_id)");
+			statement.execute("CREATE INDEX " + TOKEN_DOC_ID_INDEX + " ON "+ INDEX_TABLE_NAME +" (token, doc_id)");
+			conn.commit();
+			statement.close();
+			prepToken.close();
+			
+			//also store documents in DB 	
+			//TODO: this is ugly code duplication, documents should be inserted while getting the tokens already
+			
+			String xml = readCorpus(filename);
+			// don't confuse <MedlineCitationSet> with <MedlineCitation owner=""...>
+			Pattern pCitation = Pattern.compile("<MedlineCitation( .+?)?>(.+?)</MedlineCitation>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+			Pattern pArticleTitle = Pattern.compile("<ArticleTitle.*?>(.+?)</ArticleTitle>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+			Pattern pAbstractText = Pattern.compile("<AbstractText.*?>(.+?)</AbstractText>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+			Pattern pPmid = Pattern.compile("<pmid>(\\d+)</pmid>", Pattern.CASE_INSENSITIVE | Pattern.DOTALL | Pattern.UNICODE_CASE);
+			Matcher mCitation = pCitation.matcher(xml);
+			
+			String medlineCitation;
+			Matcher mArticleTitle, mAbstractText, mPmid;
+			// naive tokenization: 99084 different tokens
+			
+			Vector<MedlineDocument> fullDocuments = new Vector<MedlineDocument>();
+				
 			while(mCitation.find())
 			{
 				medlineCitation = mCitation.group(2);
@@ -408,22 +460,18 @@ class Assignment1
 					else { 	document.body = body; }			
 				}
 			}
-
-			db.beginTransaction(SqlJetTransactionMode.WRITE);        
-			try {            
-				ISqlJetTable table = db.getTable(DOCUMENTS_TABLE_NAME);
-
-				for(MedlineDocument document: fullDocuments)
-				//if(document != null)
-				{
-					//insert document into db
-		            	    	
-					table.insert(document.pmid, document.title, document.body);
-					
-				}
-			} finally { db.commit();}
-			db.close();
-		} catch (SqlJetException e) {
+	
+			for(MedlineDocument document: fullDocuments)
+			{
+				//table.insert(document.pmid, document.title, document.body);
+				prepDocument.setInt(1, document.pmid);
+				prepDocument.setString(2, document.title);
+				prepDocument.setString(3, document.body);
+				prepDocument.execute();
+			}
+		
+		} catch(SQLException e)
+		{
 			e.printStackTrace();
 		}
 		

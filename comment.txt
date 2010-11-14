@@ -5,3 +5,5 @@ index auf (doc_id, token) war nötig, sonst:
 	"lung cancer": 6.3s
 jetzt:
 	lung cancer und "lung cancer" bei 0.3 bis 0.4 s
+
+vorher: the lung 5s, lung the 0.4
