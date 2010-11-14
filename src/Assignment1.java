@@ -10,7 +10,6 @@ import java.io.InputStreamReader;
 //import java.io.ObjectOutputStream;
 //import java.util.Collection;
 //import java.util.Collections;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -21,9 +20,6 @@ import java.util.TreeSet;
 import java.util.Vector;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import org.tmatesoft.sqljet.core.SqlJetException;
-import org.tmatesoft.sqljet.core.SqlJetTransactionMode;
-import org.tmatesoft.sqljet.core.table.*;
 
 import org.apache.commons.lang3.StringUtils;
 import java.sql.*;
@@ -482,25 +478,6 @@ class Assignment1
 		{
 			e.printStackTrace();
 		}
-		
-		/* print all table contents
-		try{
-			db = SqlJetDb.open(dbFile, true);
-			db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
-			ISqlJetTable table = db.getTable(DOCUMENTS_TABLE_NAME);
-			ISqlJetCursor curs = table.open();
-			while(!curs.eof())
-			{
-				System.out.println(curs.getInteger(0) + " | " + curs.getString(1) + " | " + curs.getString(2));
-				curs.next();
-			}
-			curs.close();
-			db.close();
-		} catch(Exception e)
-		{
-			e.printStackTrace();
-		}
-		*/
 	}
 	
 	public static void printUsage()
@@ -613,81 +590,6 @@ public static int binSearchIndex(char[][] hashFunc, String token)
 	}
 	
 	return -1;
-}
-
-public static Vector<Integer> boolQuerySQL(String[] querytokens, boolean talkative)
-{
-	File dbFile = new File(indexFileDBPath);
-	if(!dbFile.exists())
-	{
-		System.out.println("ERROR: must build index first");
-		printUsage();
-		System.exit(1);
-	}
-			
-	SqlJetDb db;
-
-    Vector<Integer> documents = new Vector<Integer>();
-    boolean wasInitiallyFilled = false;
-	try {
-		db = SqlJetDb.open(dbFile, true);
-				
-		for (String token: querytokens)
-		{
-			//TODO: create array of document ids per token plus count, then sort by
-			//count and then intersect starting with smallest set 
-	        db.beginTransaction(SqlJetTransactionMode.READ_ONLY);
-			try {
-				ISqlJetTable table = db.getTable(INDEX_TABLE_NAME);
-	            ISqlJetCursor cursor = table.lookup(TOKEN_INDEX, token);
-	            
-	            //documents for this token
-	            Vector<Integer> current_docs = new Vector<Integer>();            
-
-	            try {
-	                if (!cursor.eof()) {
-	                    do {
-	                    	current_docs.add((int)cursor.getInteger("doc_id"));
-	                    } while(cursor.next());
-	                }
-	            } finally {
-	                cursor.close();		        
-	            }
-	            
-	            if (!wasInitiallyFilled && documents.size() == 0)
-	            {
-	            	//keep current documents for initial set
-	            	documents = current_docs;
-	            	wasInitiallyFilled = true;
-	            } else {
-	            	//intersect with documents from before (AND)
-	            	HashSet<Integer> current_docs_set = new HashSet<Integer>(current_docs);
-	            	documents.retainAll(current_docs_set);
-	            }
-	            
-			} finally { 
-				db.commit();
-			}
-		}
-	    db.close();
-	    
-	} catch (SqlJetException e) {
-		e.printStackTrace();
-	}
-	
-	if(talkative)
-	{
-		for (Integer doc : documents)
-		{
-			System.out.println(doc);
-		}
-
-		System.out.print("Found "+ documents.size()+ " document(s) matching your query");
-		if (documents.size() == 0) { System.out.println(".");} else { System.out.println(":");}
-		
-	}
-	
-	return documents;
 }
 
 public static void buildCharArrIndex(HashMap<String, Vector<MedlineTokenLocation>> invertedIndex) throws IOException
