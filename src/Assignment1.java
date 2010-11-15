@@ -474,6 +474,9 @@ class Assignment1
 				prepDocument.execute();
 			}
 		
+			conn.commit();
+			prepDocument.close();
+			
 		} catch(SQLException e)
 		{
 			e.printStackTrace();
